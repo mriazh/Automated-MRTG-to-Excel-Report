@@ -1,4 +1,4 @@
-# 📊 Automated MRTG Data to Excel Report
+# 📊 Automated MRTG to Excel Report
 
 **Script otomatis untuk membaca nilai bandwidth dari gambar grafik MRTG menggunakan OCR, lalu menyusunnya ke dalam template laporan Excel bulanan.**
 
