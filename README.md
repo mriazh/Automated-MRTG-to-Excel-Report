@@ -88,13 +88,15 @@ Sebelum menjalankan script, pastikan file dan folder berikut tersedia di direkto
 
 ## 🚀 Cara Penggunaan
 
-1. Siapkan semua file konfigurasi dan letakkan gambar MRTG di folder `MRTG-Data/<Tanggal>/`.
-2. Jalankan script di terminal:
-   ```bash
-   python mrtg_data_to_monthly_report.py
-   ```
-3. Script akan membaca folder data satu per satu, melakukan ekstraksi OCR, dan menuliskannya ke Excel.
-4. **Hasil akhir** akan disimpan dengan nama `Complete_Monthly_Report.xlsx`.
+```bash
+python mrtg_data_to_monthly_report.py
+```
+
+**Alur:**
+- Pastikan semua file konfigurasi dan gambar MRTG sudah disiapkan di folder `MRTG-Data/<Tanggal>/`.
+- Jalankan script di terminal.
+- Script akan membaca folder data satu per satu, melakukan ekstraksi OCR, dan menuliskannya ke Excel.
+- **Hasil akhir** akan disimpan dengan nama `Complete_Monthly_Report.xlsx`.
 
 ---
 
