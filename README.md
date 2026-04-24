@@ -69,13 +69,15 @@ Sebelum menjalankan script, pastikan file dan folder berikut tersedia di dalam f
 
 ## 🚀 Cara Penggunaan
 
-1. Pastikan semua gambar sudah tersimpan rapi berdasarkan tanggal di folder `MRTG-Data/`.
-2. Jalankan script di terminal:
-   ```bash
-   python script_ini.py
-   ```
-3. Script akan langsung memetakan semua gambar dari setiap folder tanggal ke sheet masing-masing di file Excel.
-4. **Hasil akhir** akan tersimpan dalam *file* baru bernama `Daily_Report_Complete.xlsx`.
+```bash
+python script_ini.py
+```
+
+**Alur:**
+- Pastikan semua gambar sudah tersimpan rapi berdasarkan tanggal di folder `MRTG-Data/`.
+- Jalankan script di terminal.
+- Script akan langsung memetakan semua gambar dari setiap folder tanggal ke sheet masing-masing di file Excel.
+- **Hasil akhir** akan tersimpan dalam *file* baru bernama `Daily_Report_Complete.xlsx`.
 
 ---
 
