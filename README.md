@@ -1,13 +1,13 @@
 # 📊 Automated MRTG to Excel Report
 
-**Kumpulan script otomatis untuk memproses gambar grafik MRTG dan menyusunnya ke dalam template laporan Excel bulanan.**
+**Satu script, dua mode! Otomatis memproses gambar grafik MRTG dan menyusunnya ke dalam template laporan Excel bulanan.**
 
-Repository ini berisi **dua versi** script dengan pendekatan berbeda:
+Repository ini berisi **satu script Python utama** (`mrtg_data_to_monthly_report.py`) yang mendukung dua mode eksekusi:
 
-| Versi | Folder | Deskripsi |
-|-------|--------|-----------|
-| 🔍 **With OCR** | `with-OCR/` | Membaca nilai bandwidth dari gambar MRTG menggunakan Tesseract OCR, lalu memasukkan data + gambar ke Excel. |
-| 🖼️ **Image Only** | `image-only/` | Menempatkan gambar MRTG secara presisi ke dalam Excel **tanpa OCR** — lebih cepat dan ringan. |
+| Mode | Deskripsi |
+|------|-----------|
+| 🔍 **[1] OCR Mode** | Membaca nilai bandwidth (In/Out, Current/Avg/Max) dari gambar MRTG menggunakan Tesseract OCR, lalu memasukkan teks **dan** gambar presisi ke Excel. |
+| 🖼️ **[2] Image Only** | Menempatkan gambar MRTG secara presisi ke dalam Excel **tanpa OCR** — prosesnya sangat cepat dan ringan! |
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green)](https://opencv.org/)
@@ -16,127 +16,66 @@ Repository ini berisi **dua versi** script dengan pendekatan berbeda:
 
 ---
 
-## 🔍 Versi 1: With OCR (`with-OCR/`)
+## 🚀 Cara Penggunaan
 
-### 📌 Fitur Utama
+1. **Jalankan script utama:**
+   ```bash
+   python mrtg_data_to_monthly_report.py
+   ```
+2. **Menu interaktif akan muncul:**
+   ```text
+   ============================================================
+     AUTOMATED MRTG TO EXCEL REPORT
+   ============================================================
+     Pilih mode:
+     [1] OCR Mode   : Ekstrak data + insert gambar ke Excel
+     [2] Image Only : Insert gambar saja ke Excel (tanpa OCR)
+   ============================================================
+     >> Masukkan pilihan (1/2): 
+   ```
+3. Pilih mode sesuai dengan template laporan dan kebutuhan Anda.
+4. **Selesai!** Script akan otomatis memproses semua folder tanggal di dalam `MRTG-Data/`.
 
-- ✅ **Ekstraksi Otomatis OCR** – Mengambil nilai *Inbound/Outbound (Current, Average, Maximum)* dari gambar MRTG menggunakan Tesseract OCR.
-- ✅ **Pemrosesan Gambar Pintar** – Menggunakan OpenCV untuk *preprocessing* gambar (grayscale, thresholding, upscaling) guna meningkatkan akurasi teks.
-- ✅ **Regex Parsing Kuat** – Menangani format nilai bandwidth yang bervariasi dari teks hasil OCR secara cerdas.
-- ✅ **Otomatisasi Excel** – Memasukkan nilai hasil ekstraksi secara akurat sesuai sel yang ditentukan (*mapping* dinamis).
-- ✅ **Penempatan Gambar di Excel** – Melakukan *resize* dan menempelkan gambar MRTG asli tepat di area sel yang telah dialokasikan.
-- ✅ **Multi-Sheet Harian** – Membuat *sheet* baru secara otomatis berdasarkan tanggal gambar yang diproses.
+---
 
-### 🛠️ Prasyarat
+## 📁 Persiapan File & Struktur Folder
 
-| Software | Keterangan |
-|----------|-------------|
-| **Python 3.8+** | [Download](https://www.python.org/downloads/) |
-| **Tesseract OCR** | [Download](https://github.com/UB-Mannheim/tesseract/wiki) – **Centang "Add to PATH"** |
-| **Template Excel** | File `Report on Internet Bandwidth Utilization by Telkom (MRTG).xlsx` |
+Semua file konfigurasi sudah berada di folder utama (*root*) repository. Pastikan Anda memiliki struktur berikut:
 
-### 📦 Instalasi
+```text
+Automated-MRTG-to-Excel-Report/
+├── mrtg_data_to_monthly_report.py
+├── list_mrtg_data.txt                       # Daftar data (Mode OCR)
+├── list_mrtg_data_img_only.txt              # Daftar data (Mode Image Only)
+├── list_mrtg_data_position.txt              # Mapping letak sel Excel (Mode OCR)
+├── list_mrtg_data_position_img_only.txt     # Mapping letak sel Excel (Mode Image Only)
+├── MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx            # Template OCR
+├── MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom (Img only).xlsx # Template Image Only
+└── MRTG-Data/                               # Folder berisi gambar MRTG harian
+    ├── 20260101/
+    ├── 20260102/
+    └── ...
+```
 
+---
+
+## 🛠️ Prasyarat & Instalasi
+
+### Library Python yang dibutuhkan:
 ```bash
 pip install opencv-python numpy openpyxl pillow pytesseract
 ```
 
-Edit path Tesseract di script jika berbeda:
+### 1. Mode OCR (Butuh Tesseract)
+Jika Anda menggunakan **Mode 1 (OCR)**, pastikan [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) sudah terinstall.
+Jika path instalasinya berbeda, edit baris ini di dalam `mrtg_data_to_monthly_report.py`:
 ```python
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 ```
 
-### 📁 Persiapan File
-
-Pastikan file berikut tersedia di dalam folder `with-OCR/`:
-
-1. **`list_mrtg_data.txt`** – Daftar SID atau Graph Title yang akan diproses.
-2. **`sid-in-out-image-position-excel.txt`** – Konfigurasi mapping sel Excel untuk nilai OCR dan gambar MRTG.
-3. **Template Excel** – File template laporan kosong.
-4. **Folder `MRTG-Data/`** – Folder berisi direktori tanggal (`YYYYMMDD`) yang menyimpan gambar hasil screenshot MRTG.
-
-### 🚀 Cara Penggunaan
-
-```bash
-cd with-OCR
-python mrtg_data_to_monthly_report.py
-```
-
-**Alur:**
-- Pastikan semua file konfigurasi dan gambar MRTG sudah disiapkan di folder `MRTG-Data/<Tanggal>/`.
-- Jalankan script di terminal.
-- Script akan membaca folder data satu per satu, melakukan ekstraksi OCR, dan menuliskannya ke Excel.
-- **Hasil akhir** akan disimpan dengan nama `Complete_Monthly_Report.xlsx`.
+### 2. Mode Image Only (Tanpa Tesseract)
+Jika Anda hanya menggunakan **Mode 2 (Image Only)**, instalasi Tesseract dan OpenCV **tidak diwajibkan**, karena library tersebut baru akan diload ketika Mode 1 dipilih.
 
 ---
 
-## 🖼️ Versi 2: Image Only (`image-only/`)
-
-### 📌 Fitur Utama
-
-- ✅ **Penempatan Gambar Super Cepat** – Memasukkan gambar ke dalam Excel tanpa overhead OCR.
-- ✅ **Resize Proporsional Dinamis** – Menyesuaikan ukuran gambar secara presisi agar pas dengan area sel Excel yang telah ditentukan di konfigurasi.
-- ✅ **Mapping Area Fleksibel** – Menggunakan file teks sederhana untuk memetakan ID gambar ke sel awal dan akhir (misal: `B12-L23`).
-- ✅ **Multi-Sheet Harian** – Otomatis mendeteksi folder tanggal dan membuat *sheet* harian (1-31) di dalam file Excel.
-
-### 🛠️ Prasyarat
-
-| Software | Keterangan |
-|----------|-------------|
-| **Python 3.8+** | [Download](https://www.python.org/downloads/) |
-| **Template Excel** | File `MENTAHAN FORMAT DAILY MRTG.xlsx` |
-
-*(Catatan: Versi ini **tidak membutuhkan** instalasi Tesseract.)*
-
-### 📦 Instalasi
-
-```bash
-pip install openpyxl pillow
-```
-
-### 📁 Persiapan File
-
-Pastikan file berikut tersedia di dalam folder `image-only/`:
-
-1. **`list_mrtg_data.txt`** – Berisi daftar urutan SID atau Graph Title yang akan di-*insert*.
-2. **`sid_image-position-excel.txt`** – Konfigurasi lokasi sel (area letak gambar) di Excel untuk setiap ID.
-3. **Template Excel** – File template laporan kosong.
-4. **Folder `MRTG-Data/`** – Folder berisi folder berformat tanggal `YYYYMMDD` yang menyimpan gambar-gambar MRTG.
-
-### 🚀 Cara Penggunaan
-
-```bash
-cd image-only
-python script_ini.py
-```
-
-**Alur:**
-- Pastikan semua gambar sudah tersimpan rapi berdasarkan tanggal di folder `MRTG-Data/`.
-- Jalankan script di terminal.
-- Script akan langsung memetakan semua gambar dari setiap folder tanggal ke sheet masing-masing di file Excel.
-- **Hasil akhir** akan tersimpan dalam file baru bernama `Daily_Report_Complete.xlsx`.
-
----
-
-## 📂 Struktur Repository
-
-```
-Automated-MRTG-to-Excel-Report/
-├── with-OCR/                    # Versi dengan OCR
-│   ├── mrtg_data_to_monthly_report.py
-│   ├── list_mrtg_data.txt
-│   ├── sid-in-out-image-position-excel.txt
-│   ├── Template Excel (.xlsx)
-│   └── MRTG-Data/
-├── image-only/                  # Versi tanpa OCR (image saja)
-│   ├── script_ini.py
-│   ├── list_mrtg_data.txt
-│   ├── sid_image-position-excel.txt
-│   ├── Template Excel (.xlsx)
-│   └── MRTG-Data/
-└── README.md
-```
-
----
-
-**Pilih versi yang sesuai kebutuhan Anda dan selamat menyelesaikan pelaporan MRTG! 🚀**
+**Cepat dan Presisi! Selamat menyelesaikan pelaporan bulanan Anda! 🚀**
