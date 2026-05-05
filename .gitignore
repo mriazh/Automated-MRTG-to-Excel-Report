@@ -1,6 +1,10 @@
 # Output excel file
-Daily_Report_Complete.xlsx
-Complete_Monthly_Report.xlsx
+MRTG-Monthly-Report.xlsx
+MRTG-Monthly-Report-image-only.xlsx
+
+# Ignore raw image data to prevent repo bloat, but keep the folder
+MRTG-Data/*
+!MRTG-Data/.gitkeep
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

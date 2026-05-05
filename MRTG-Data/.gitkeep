@@ -1,0 +1,2 @@
+# This file ensures the MRTG-Data directory is tracked by Git, 
+# while its contents (the raw image files) are ignored to prevent repo bloat.
