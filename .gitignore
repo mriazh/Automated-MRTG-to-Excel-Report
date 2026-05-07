@@ -190,3 +190,6 @@ cython_debug/
 # Cursor
 .cursorignore
 .cursorindexingignore
+
+# PaddleOCR model cache (auto-download saat pertama kali run)
+inference/

@@ -6,12 +6,11 @@ Repository ini berisi **satu script Python utama** (`mrtg_data_to_monthly_report
 
 | Mode | Deskripsi |
 |------|-----------|
-| 🔍 **[1] OCR Mode** | Membaca nilai bandwidth (In/Out, Current/Avg/Max) dari gambar MRTG menggunakan Tesseract OCR, lalu memasukkan teks **dan** gambar presisi ke Excel. |
+| 🔍 **[1] OCR Mode** | Membaca nilai bandwidth (In/Out, Current/Avg/Max) dari gambar MRTG menggunakan **PaddleOCR** (Deep Learning), lalu memasukkan teks **dan** gambar presisi ke Excel. |
 | 🖼️ **[2] Image Only** | Menempatkan gambar MRTG secara presisi ke dalam Excel **tanpa OCR** — prosesnya sangat cepat dan ringan! |
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green)](https://opencv.org/)
-[![Tesseract](https://img.shields.io/badge/Tesseract-5.x-orange)](https://github.com/UB-Mannheim/tesseract)
+[![PaddleOCR](https://img.shields.io/badge/PaddleOCR-Deep%20Learning-orange)](https://github.com/PaddlePaddle/PaddleOCR)
 [![OpenPyXL](https://img.shields.io/badge/OpenPyXL-3.x-yellow)](https://openpyxl.readthedocs.io/)
 
 ---
@@ -45,6 +44,7 @@ Semua file konfigurasi sudah berada di folder utama (*root*) repository. Pastika
 ```text
 Automated-MRTG-to-Excel-Report/
 ├── mrtg_data_to_monthly_report.py
+├── requirements.txt                             # Dependencies Python
 ├── list_mrtg_data.txt                       # Daftar data (Mode OCR)
 ├── list_mrtg_data_img_only.txt              # Daftar data (Mode Image Only)
 ├── list_mrtg_data_position.txt              # Mapping letak sel Excel (Mode OCR)
@@ -61,20 +61,24 @@ Automated-MRTG-to-Excel-Report/
 
 ## 🛠️ Prasyarat & Instalasi
 
-### Library Python yang dibutuhkan:
+### Install Dependencies
 ```bash
-pip install opencv-python numpy openpyxl pillow pytesseract
+pip install -r requirements.txt
 ```
 
-### 1. Mode OCR (Butuh Tesseract)
-Jika Anda menggunakan **Mode 1 (OCR)**, pastikan [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) sudah terinstall.
-Jika path instalasinya berbeda, edit baris ini di dalam `mrtg_data_to_monthly_report.py`:
-```python
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-```
+### 1. Mode OCR (PaddleOCR Deep Learning)
+Jika Anda menggunakan **Mode 1 (OCR)**, PaddleOCR akan otomatis men-download model deep learning (~150MB) saat pertama kali dijalankan. Tidak perlu install software tambahan apapun.
 
-### 2. Mode Image Only (Tanpa Tesseract)
-Jika Anda hanya menggunakan **Mode 2 (Image Only)**, instalasi Tesseract dan OpenCV **tidak diwajibkan**, karena library tersebut baru akan diload ketika Mode 1 dipilih.
+> **Catatan:** `paddlepaddle` dan `paddleocr` sudah termasuk di `requirements.txt`. Library `opencv-python` dan `numpy` otomatis terinstall sebagai dependency.
+
+### 2. Mode Image Only (Tanpa OCR)
+Jika Anda hanya menggunakan **Mode 2 (Image Only)**, library OCR **tidak akan di-load** karena menggunakan lazy import. Proses akan tetap ringan dan cepat.
+
+---
+
+## 📝 License
+
+[MIT License](LICENSE)
 
 ---
 

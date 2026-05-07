@@ -178,99 +178,100 @@ def baca_mapping_ocr(filepath):
     return mapping
 
 
-def extract_mrtg_values(image_path):
-    """Ekstrak nilai bandwidth dari gambar MRTG menggunakan Tesseract OCR."""
-    # Lazy import — hanya diperlukan di mode OCR
-    import cv2
-    import numpy as np
-    import pytesseract
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+def _get_ocr_engine():
+    """Singleton: inisialisasi PaddleOCR sekali saja agar tidak reload model tiap gambar."""
+    if not hasattr(_get_ocr_engine, '_engine'):
+        from paddleocr import PaddleOCR
+        _get_ocr_engine._engine = PaddleOCR(
+            use_angle_cls=False,
+            lang='en',
+            show_log=False,
+        )
+    return _get_ocr_engine._engine
 
+
+def extract_mrtg_values(image_path):
+    """Ekstrak nilai bandwidth dari gambar MRTG menggunakan PaddleOCR (Deep Learning).
+
+    Mengembalikan dict berisi Inbound/Outbound × Current/Average/Maximum,
+    atau None jika gagal.
+    """
     try:
-        img = cv2.imread(image_path)
-        if img is None:
+        ocr = _get_ocr_engine()
+        results = ocr.ocr(image_path, cls=False)
+
+        if not results or not results[0]:
+            print(f"    PaddleOCR: Tidak ada teks terdeteksi di {image_path}")
             return None
 
-        # Preprocessing
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
-        thresh = cv2.resize(thresh, None, fx=3, fy=3, interpolation=cv2.INTER_LINEAR)
-        custom_config = r'--oem 3 --psm 6'
-        text = pytesseract.image_to_string(thresh, config=custom_config)
+        # Kumpulkan semua teks yang terdeteksi beserta posisi Y-nya
+        detected = []
+        for line in results[0]:
+            bbox = line[0]           # [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
+            text = line[1][0]        # recognized text
+            confidence = line[1][1]  # confidence score
+            y_center = (bbox[0][1] + bbox[2][1]) / 2  # rata-rata Y atas dan bawah
+            detected.append((y_center, text, confidence))
 
-        # Cari baris yang mengandung Inbound dan Outbound
-        lines = text.split('\n')
+        # Gabungkan semua teks menjadi satu string untuk parsing
+        full_text = ' '.join([t for _, t, _ in detected])
+
+        # Cari baris Inbound dan Outbound
+        # PaddleOCR mengembalikan teks per-box, jadi kita kelompokkan berdasarkan Y
+        # Box yang Y-nya berdekatan (±15px) dianggap satu baris
+        detected.sort(key=lambda x: x[0])  # sort by Y
+
+        lines_grouped = []
+        current_line = []
+        current_y = None
+
+        for y, text, conf in detected:
+            if current_y is None or abs(y - current_y) < 15:
+                current_line.append(text)
+                current_y = y if current_y is None else (current_y + y) / 2
+            else:
+                lines_grouped.append(' '.join(current_line))
+                current_line = [text]
+                current_y = y
+        if current_line:
+            lines_grouped.append(' '.join(current_line))
+
         inbound_line = ""
         outbound_line = ""
-        for line in lines:
-            if 'Inbound' in line:
+        for line in lines_grouped:
+            if 'Inbound' in line or 'inbound' in line:
                 inbound_line = line
-            if 'Outbound' in line:
+            if 'Outbound' in line or 'outbound' in line:
                 outbound_line = line
 
-        # Jika tidak ketemu, coba gabung semua teks
-        if not inbound_line and 'Inbound' in text:
-            inbound_line = text
-        if not outbound_line and 'Outbound' in text:
-            outbound_line = text
+        # Fallback: cari di full text
+        if not inbound_line and 'Inbound' in full_text:
+            inbound_line = full_text
+        if not outbound_line and 'Outbound' in full_text:
+            outbound_line = full_text
 
         def parse_line(line):
             """Ekstrak Current, Average, Maximum dari satu baris teks."""
             result = {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
             for keyword in ['Current', 'Average', 'Maximum']:
-                pattern = rf'{keyword}\s*:\s*([\d\.]+|[Nn][Aa]|[Nn]/?[Aa]?|[Nn][Aa][Nn]?)\s*([Mk]?)'
+                # Pattern: keyword diikuti tanda : atau spasi, lalu angka + satuan
+                pattern = rf'{keyword}\s*:?\s*([\d\.]+)\s*([MkGT]?)'
                 match = re.search(pattern, line, re.IGNORECASE)
                 if match:
                     raw_val = match.group(1)
                     unit = match.group(2) if match.group(2) else ''
-                    if re.match(r'^[Nn]', raw_val):
+                    try:
+                        val = float(raw_val)
+                        if val > 100000:
+                            result[keyword] = 'N/A'
+                        else:
+                            result[keyword] = f"{raw_val} {unit}" if unit else f"{raw_val} M"
+                    except ValueError:
                         result[keyword] = 'N/A'
-                    else:
-                        try:
-                            val = float(raw_val)
-                            if val > 100000:
-                                result[keyword] = 'N/A'
-                            else:
-                                if unit:
-                                    result[keyword] = f"{raw_val} {unit}"
-                                else:
-                                    result[keyword] = f"{raw_val} M"
-                        except:
-                            result[keyword] = 'N/A'
-                else:
-                    pattern2 = rf'{keyword}\s+([\d\.]+)\s*([Mk]?)'
-                    match2 = re.search(pattern2, line, re.IGNORECASE)
-                    if match2:
-                        raw_val = match2.group(1)
-                        unit = match2.group(2) if match2.group(2) else ''
-                        try:
-                            val = float(raw_val)
-                            if val > 100000:
-                                result[keyword] = 'N/A'
-                            else:
-                                result[keyword] = f"{raw_val} {unit}" if unit else f"{raw_val} M"
-                        except:
-                            result[keyword] = 'N/A'
             return result
 
-        inbound_vals = parse_line(inbound_line) if inbound_line else {'Current':'N/A','Average':'N/A','Maximum':'N/A'}
-        outbound_vals = parse_line(outbound_line) if outbound_line else {'Current':'N/A','Average':'N/A','Maximum':'N/A'}
-
-        # Jika semua N/A, coba ekstrak angka berurutan dari seluruh teks (fallback terakhir)
-        if all(v == 'N/A' for v in inbound_vals.values()) and all(v == 'N/A' for v in outbound_vals.values()):
-            all_matches = re.findall(r'([\d\.]+)\s*([Mk]?)', text)
-            if len(all_matches) >= 6:
-                keys = ['Inbound_Current', 'Inbound_Average', 'Inbound_Maximum',
-                        'Outbound_Current', 'Outbound_Average', 'Outbound_Maximum']
-                for i, (val_str, unit) in enumerate(all_matches[:6]):
-                    try:
-                        val = float(val_str)
-                        if val > 100000:
-                            continue
-                        unit_disp = unit if unit else 'M'
-                        inbound_vals[keys[i].split('_')[1]] = f"{val_str} {unit_disp}"
-                    except:
-                        pass
+        inbound_vals = parse_line(inbound_line) if inbound_line else {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
+        outbound_vals = parse_line(outbound_line) if outbound_line else {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
 
         result = {
             'Inbound_Current': inbound_vals['Current'],
