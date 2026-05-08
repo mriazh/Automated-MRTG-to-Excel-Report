@@ -1,48 +1,37 @@
-# Automated MRTG to Excel Report
+# Automated MRTG to Excel Report 🚀
 
-Alat otomatisasi untuk memindahkan data grafik MRTG ke laporan bulanan Excel menggunakan **PaddleOCR (Deep Learning)**. 
+Alat bantu otomatis untuk mengekstrak data dari grafik MRTG (.png) dan memasukkannya ke dalam laporan Excel secara rapi. Mendukung ekstraksi data otomatis menggunakan OCR atau sekadar memasukkan gambar saja.
 
-## 📋 Prasyarat (PENTING!)
-- **Python 3.12** (Sangat disarankan).
-  - **Catatan**: Python 3.13 **tidak didukung** oleh PaddlePaddle. Jika Anda terlanjur menginstal 3.13, pastikan Anda menginstal 3.12 secara berdampingan.
-- **Microsoft Visual C++ Build Tools** (Wajib untuk Windows).
+## ✨ Fitur Utama
+- **Dual Mode**:
+  - **[1] OCR Mode**: Ekstraksi data bandwidth (Inbound/Outbound) otomatis dari grafik menggunakan PaddleOCR dan memasukkannya ke sel Excel yang ditentukan.
+  - **[2] Image Only**: Memasukkan gambar grafik MRTG ke dalam Excel tanpa proses ekstraksi teks (lebih cepat).
+- **Sticky Progress UI**: Antarmuka terminal yang bersih dengan bar progres yang selalu nempel di bawah, memberikan statistik real-time (OK, Partial, Fail).
+- **Auto-Resize**: Gambar grafik secara otomatis diubah ukurannya agar pas dengan area (cell range) di Excel.
+- **Silent Logging**: Log teknis yang berisik dari library OCR disembunyikan, membuat tampilan terminal tetap fokus pada progres.
+- **Detailed Error Tracking**: Item yang gagal atau perlu review dicatat dalam `ocr_report.log`.
 
-## 🛠️ Instalasi (Langkah Demi Langkah)
+## 🛠️ Persyaratan
+- Python 3.8+
+- Library yang dibutuhkan (instal lewat `requirements.txt`):
+  ```bash
+  pip install -r requirements.txt
+  ```
 
-Jika Anda sebelumnya gagal instalasi, **HAPUS** dulu folder `.venv` yang lama!
-
-1. **Hapus Virtual Environment lama (Jika ada)**:
+## 🚀 Cara Penggunaan
+1. Letakkan folder data MRTG lu di folder `MRTG-Data`.
+2. Pastikan file mapping (`list_mrtg_data_position.txt`) dan daftar SID (`list_mrtg_data.txt`) sudah sesuai.
+3. Jalankan script utama:
    ```bash
-   rmdir /s /q .venv
+   python mrtg_data_to_monthly_report.py
    ```
+4. Pilih mode yang diinginkan (1 atau 2) dan biarkan script bekerja.
 
-2. **Buat Virtual Environment baru (Python 3.12)**:
-   ```bash
-   # Pastikan menggunakan versi 3.12
-   py -3.12 -m venv .venv
-   ```
+## 📁 Struktur Folder
+- `MRTG-Data/`: Folder berisi subfolder tanggal (YYYYMMDD) yang berisi file .png.
+- `list_mrtg_data.txt`: Daftar SID atau judul grafik yang ingin diproses.
+- `list_mrtg_data_position.txt`: Mapping posisi sel Excel untuk tiap SID (Inbound/Outbound/Image).
+- `ocr_report.log`: Catatan detail jika ada kegagalan ekstraksi data.
 
-3. **Aktifkan Virtual Environment**:
-   ```bash
-   .venv\Scripts\activate
-   ```
-
-4. **Instal Dependencies**:
-   ```bash
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-   *Jika masih ada kendala pada `paddlepaddle`, gunakan index resmi:*
-   ```bash
-   pip install paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
-   ```
-
-## 📖 Cara Penggunaan
-1. Taruh folder data di `MRTG-Data/`.
-2. Jalankan: `python mrtg_data_to_monthly_report.py`
-3. Masukkan `1` untuk OCR.
-4. Cek hasil di `MRTG-Monthly-Report.xlsx`.
-
-## 🛠️ Troubleshooting
-- **Gagal Instal Paddle**: Pastikan folder `.venv` lu beneran pake Python 3.12. Cek dengan perintah `python --version` setelah aktivasi venv.
-- **Visual C++ Error**: Instal [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+## ⚖️ Lisensi
+Project ini menggunakan lisensi MIT. Silakan gunakan dan modifikasi sesuka hati!

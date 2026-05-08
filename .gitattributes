@@ -1,6 +1,13 @@
-# Auto detect text files and perform LF normalization
-* text=auto
-
-# Binary files
+# Treat Excel files as binary
 *.xlsx binary
+*.xls binary
+
+# Treat images as binary
 *.png binary
+*.jpg binary
+*.jpeg binary
+
+# Standard line endings for scripts
+*.py text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
