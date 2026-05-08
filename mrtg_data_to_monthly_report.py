@@ -641,7 +641,7 @@ def main():
         console.print("  FINAL REPORT SUMMARY", style="bold cyan")
         console.print("="*60 + "\n", style="bold cyan")
         
-        total = global_stats['total']
+        total = global_stats['total_items']
         if total > 0:
             ok_p = (global_stats['ok'] / total * 100)
             partial_p = (global_stats['partial'] / total * 100)
