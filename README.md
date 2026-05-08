@@ -1,85 +1,59 @@
-# 📊 Automated MRTG to Excel Report
+# Automated MRTG to Excel Report
 
-**Satu script, dua mode! Otomatis memproses gambar grafik MRTG dan menyusunnya ke dalam template laporan Excel bulanan.**
+Alat otomatisasi untuk memindahkan data grafik MRTG ke laporan bulanan Excel menggunakan **PaddleOCR (Deep Learning)**. Alat ini mengekstrak nilai *Current*, *Average*, dan *Maximum* untuk *Inbound* dan *Outbound* langsung dari gambar grafik.
 
-Repository ini berisi **satu script Python utama** (`mrtg_data_to_monthly_report.py`) yang mendukung dua mode eksekusi:
+## 🚀 Fitur Utama
+- **OCR Canggih**: Menggunakan PaddleOCR yang lebih akurat dibanding Tesseract konvensional.
+- **Fuzzy Keyword Matching**: Tetap akurat meskipun OCR salah baca sedikit (misal: `Inbound` kebaca `Inhound`).
+- **Review List**: Menampilkan daftar ID yang bermasalah (N/A) di akhir proses untuk audit cepat.
+- **Auto-Image Insert**: Otomatis memasukkan dan menyesuaikan ukuran gambar grafik ke dalam sel Excel.
+- **Progress Tracker**: Monitoring proses dengan persentase dan ringkasan per tanggal.
 
-| Mode | Deskripsi |
-|------|-----------|
-| 🔍 **[1] OCR Mode** | Membaca nilai bandwidth (In/Out, Current/Avg/Max) dari gambar MRTG menggunakan **PaddleOCR** (Deep Learning), lalu memasukkan teks **dan** gambar presisi ke Excel. |
-| 🖼️ **[2] Image Only** | Menempatkan gambar MRTG secara presisi ke dalam Excel **tanpa OCR** — prosesnya sangat cepat dan ringan! |
+## 📋 Prasyarat
+- **Python 3.8 - 3.12** (Disarankan Python 3.10+).
+- **Microsoft Visual C++ Build Tools** (Wajib untuk kompilasi library PaddlePaddle di Windows).
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![PaddleOCR](https://img.shields.io/badge/PaddleOCR-Deep%20Learning-orange)](https://github.com/PaddlePaddle/PaddleOCR)
-[![OpenPyXL](https://img.shields.io/badge/OpenPyXL-3.x-yellow)](https://openpyxl.readthedocs.io/)
+## 🛠️ Instalasi
 
----
+1. **Clone Repository**:
+   ```bash
+   git clone https://github.com/username/Automated-MRTG-to-Excel-Report.git
+   cd Automated-MRTG-to-Excel-Report
+   ```
 
-## 🚀 Cara Penggunaan
+2. **Buat Virtual Environment** (Disarankan):
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
 
-1. **Jalankan script utama:**
+3. **Instal Dependencies**:
+   ```bash
+   pip install paddlepaddle paddleocr openpyxl Pillow
+   ```
+
+## 📖 Cara Penggunaan
+
+1. **Siapkan Data**:
+   - Taruh folder-folder tanggal (format `YYYYMMDD`) di dalam folder `MRTG-Data/`.
+   - Pastikan file `list_mrtg_data_position.txt` dan `list_mrtg_data.txt` sudah sesuai dengan koordinat Excel lu.
+
+2. **Jalankan Script**:
    ```bash
    python mrtg_data_to_monthly_report.py
    ```
-2. **Menu interaktif akan muncul:**
-   ```text
-   ============================================================
-     AUTOMATED MRTG TO EXCEL REPORT
-   ============================================================
-     Pilih mode:
-     [1] OCR Mode   : Ekstrak data + insert gambar ke Excel
-     [2] Image Only : Insert gambar saja ke Excel (tanpa OCR)
-   ============================================================
-     >> Masukkan pilihan (1/2): 
-   ```
-3. Pilih mode sesuai dengan template laporan dan kebutuhan Anda.
-4. **Selesai!** Script akan otomatis memproses semua folder tanggal di dalam `MRTG-Data/`.
+
+3. **Pilih Mode**:
+   - Pilih `[1]` untuk mode OCR lengkap.
+   - Pilih `[2]` jika hanya ingin memasukkan gambar tanpa ekstraksi data.
+
+4. **Review**:
+   - Setelah selesai, cek **Review List** di terminal untuk melihat SID mana saja yang memiliki nilai `N/A`.
+   - Hasil akhir akan tersimpan di `MRTG-Monthly-Report.xlsx`.
+
+## 🛠️ Troubleshooting
+- **Gagal OCR**: Pastikan gambar di folder `MRTG-Data` tidak korup dan teks di legend grafik terbaca jelas.
+- **Log Terlalu Ramai**: Script sudah otomatis membungkam log internal PaddleOCR, namun jika masih muncul, pastikan environment variable `GLOG_minloglevel=3` sudah aktif.
 
 ---
-
-## 📁 Persiapan File & Struktur Folder
-
-Semua file konfigurasi sudah berada di folder utama (*root*) repository. Pastikan Anda memiliki struktur berikut:
-
-```text
-Automated-MRTG-to-Excel-Report/
-├── mrtg_data_to_monthly_report.py
-├── requirements.txt                             # Dependencies Python
-├── list_mrtg_data.txt                       # Daftar data (Mode OCR)
-├── list_mrtg_data_img_only.txt              # Daftar data (Mode Image Only)
-├── list_mrtg_data_position.txt              # Mapping letak sel Excel (Mode OCR)
-├── list_mrtg_data_position_img_only.txt     # Mapping letak sel Excel (Mode Image Only)
-├── MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx            # Template OCR
-├── MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom (Img only).xlsx # Template Image Only
-└── MRTG-Data/                               # Folder berisi gambar MRTG harian
-    ├── 20260101/
-    ├── 20260102/
-    └── ...
-```
-
----
-
-## 🛠️ Prasyarat & Instalasi
-
-### Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 1. Mode OCR (PaddleOCR Deep Learning)
-Jika Anda menggunakan **Mode 1 (OCR)**, PaddleOCR akan otomatis men-download model deep learning (~150MB) saat pertama kali dijalankan. Tidak perlu install software tambahan apapun.
-
-> **Catatan:** `paddlepaddle` dan `paddleocr` sudah termasuk di `requirements.txt`. Library `opencv-python` dan `numpy` otomatis terinstall sebagai dependency.
-
-### 2. Mode Image Only (Tanpa OCR)
-Jika Anda hanya menggunakan **Mode 2 (Image Only)**, library OCR **tidak akan di-load** karena menggunakan lazy import. Proses akan tetap ringan dan cepat.
-
----
-
-## 📝 License
-
-[MIT License](LICENSE)
-
----
-
-**Cepat dan Presisi! Selamat menyelesaikan pelaporan bulanan Anda! 🚀**
+**Note**: Project ini bermigrasi dari Tesseract ke PaddleOCR untuk akurasi yang lebih tinggi pada layout grafik MRTG yang kompleks.
