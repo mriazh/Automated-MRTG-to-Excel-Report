@@ -244,16 +244,37 @@ def extract_mrtg_values(image_path):
         logger.debug(f"OCR memproses: {os.path.basename(image_path)}")
 
         import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            result_iter = ocr.predict(image_path)
+        import contextlib
+        
+        # Mute total biar steril
+        with open(os.devnull, 'w') as fnull:
+            with contextlib.redirect_stdout(fnull), \
+                 contextlib.redirect_stderr(fnull), \
+                 warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                
+                # Strategi panggil: Utamakan predict()
+                if hasattr(ocr, 'predict'):
+                    result_iter = ocr.predict(image_path)
+                elif hasattr(ocr, 'ocr'):
+                    result_iter = ocr.ocr(image_path)
+                else:
+                    logger.error("Engine OCR tidak punya method predict atau ocr!")
+                    return None
 
-            all_texts = []
-            for res in result_iter:
-                data = res.get('res', res) if hasattr(res, 'get') else {}
-                if data:
-                    texts = data.get('rec_texts', [])
-                    all_texts.extend([str(t).strip() for t in texts])
+        all_texts = []
+        for res in result_iter:
+            # Handle format output PaddleOCR vs PaddleX
+            data = res.get('res', res) if isinstance(res, dict) else res
+            if isinstance(data, list):
+                # Format [[box, (text, conf)], ...]
+                for line in data:
+                    if isinstance(line, list) and len(line) > 1:
+                        text = line[1][0] if isinstance(line[1], tuple) else str(line[1])
+                        all_texts.append(str(text).strip())
+            elif isinstance(data, dict):
+                texts = data.get('rec_texts', [])
+                all_texts.extend([str(t).strip() for t in texts])
 
         # --- DEBUG LOG: START ---
         sid_log = os.path.basename(image_path).replace('MRTG_', '').replace('.png', '')
@@ -394,7 +415,7 @@ def tulis_nilai(sheet, entry, values):
             sheet.cell(row=row, column=col, value=values[key])
 
 
-def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_list, tanggal_idx, total_tanggal):
+def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_list, tanggal_idx, total_tanggal, global_pbar):
     """Proses satu folder tanggal untuk mode OCR (ekstrak data + insert gambar)."""
     hari = int(tanggal_str[6:8])
     sheet_name_candidates = [str(hari), f"{hari:02d}"]
@@ -406,37 +427,41 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
     if sheet is None:
         sheet = wb.create_sheet(title=str(hari))
 
-    total = len(items)
+    total_in_day = len(items)
     ok_count = 0
     na_count = 0
     fail_count = 0
 
-    # Progress bar tqdm dengan format custom, diarahkan ke stdout karena stderr di-mute
-    pbar = tqdm(items, desc=f"Tanggal {tanggal_str} ({tanggal_idx}/{total_tanggal})", 
-                leave=True, ncols=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}',
-                file=sys.stdout)
+    # Header pake ANSI color biar beneran berwarna di tqdm
+    cyan = "\033[1;36m"
+    dim = "\033[2m"
+    reset = "\033[0m"
+    global_pbar.write(f"\n{cyan}📅 TANGGAL: {tanggal_str} ({tanggal_idx}/{total_tanggal}){reset}")
+    global_pbar.write(f"{dim}──────────────────────────────────────────────────{reset}")
     
-    for idx, (nomor, tipe, id_val) in enumerate(pbar, 1):
+    for idx, (nomor, tipe, id_val) in enumerate(items, 1):
         id_clean = re.sub(r'^\(\d+\)\s*', '', id_val)
         label = f"{id_val}"
 
         if id_clean not in mapping:
-            pbar.write(f"  ⏭️  [{idx:03d}/{total:03d}] {label} (Skip: No Mapping)")
+            global_pbar.write(f"  ⏭️  {label} (Skip: No Mapping)")
+            global_pbar.update(1)
             continue
         entry = mapping[id_clean]
 
         path_gambar = cari_path_gambar(FOLDER_DATA, tanggal_str, tipe, id_val)
         if not os.path.exists(path_gambar):
-            pbar.write(f"  ❌ [{idx:03d}/{total:03d}] {label} (Missing Image)")
+            global_pbar.write(f"  ❌ {label} (Missing Image)")
             fail_count += 1
             global_stats['fail'] += 1
             review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Fail', 'na': 6})
+            global_pbar.update(1)
             continue
 
         values = extract_mrtg_values(path_gambar)
         
         if not values:
-            pbar.write(f"  ❌ [{idx:03d}/{total:03d}] {label} (OCR Fail)")
+            global_pbar.write(f"  ❌ {label} (OCR Fail)")
             fail_count += 1
             global_stats['fail'] += 1
             review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Fail', 'na': 6})
@@ -444,11 +469,11 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
             # Hitung N/A
             val_na = sum(1 for v in values.values() if v == 'N/A')
             if val_na == 0:
-                pbar.write(f"  ✅ [{idx:03d}/{total:03d}] {label} (Success)")
+                global_pbar.write(f"  ✅ {label} (Success)")
                 ok_count += 1
                 global_stats['ok'] += 1
             else:
-                pbar.write(f"  ⚠️  [{idx:03d}/{total:03d}] {label} ({6-val_na}/6 OK)")
+                global_pbar.write(f"  ⚠️  {label} ({6-val_na}/6 OK)")
                 na_count += 1
                 global_stats['partial'] += 1
                 review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Partial', 'na': val_na})
@@ -458,12 +483,13 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
                 (start_row, start_col), (end_row, end_col) = entry['Image']
                 tambah_gambar_di_area(sheet, path_gambar, start_row, start_col, end_row, end_col)
 
-        # Update progress bar description
-        pbar.set_postfix({'OK': ok_count, 'Partial': na_count, 'Fail': fail_count})
-
-    pbar.close()
-    global_stats['total'] += total
-    console.print(f"[green]✅[/green] Tanggal {tanggal_str}: [green]{ok_count}[/green] OK, [yellow]{na_count}[/yellow] Partial, [red]{fail_count}[/red] Fail", style="bold")
+        # Update global stats & pbar
+        global_pbar.update(1)
+        global_pbar.set_postfix_str(f"✅ {global_stats['ok']} | ⚠️ {global_stats['partial']} | ❌ {global_stats['fail']}")
+        
+    # Ringkasan Akhir Hari (Pake emot di tiap kategori biar makin jelas)
+    global_pbar.write(f"\n📊 Summary {tanggal_str}: ✅ \033[1;32m{ok_count} OK\033[0m | ⚠️  \033[1;33m{na_count} Partial\033[0m | ❌ \033[1;31m{fail_count} Fail\033[0m")
+    global_pbar.write(f"{dim}──────────────────────────────────────────────────{reset}\n")
 
 
 # ========================================================
@@ -581,13 +607,29 @@ def main():
         console.print("[cyan]✅[/cyan] Template berhasil dimuat.\n")
 
         # Global Stats
-        global_stats = {'ok': 0, 'partial': 0, 'fail': 0, 'total': 0}
+        global_stats = {
+            'ok': 0, 'partial': 0, 'fail': 0, 
+            'total_items': len(tanggal_list) * len(items)
+        }
         review_list = []
 
-        # Progress bar untuk tanggal
+        # 1. PAKSA INISIALISASI OCR DI SINI
+        console.print("[cyan]⚙️  Initializing OCR Engine...[/cyan]")
+        import contextlib
+        with open(os.devnull, 'w') as fnull:
+            with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
+                _get_ocr_engine()
+        console.print("[green]✅ Engine Ready![/green]\n")
+
+        # 2. Progress bar STICKY di paling bawah
+        global_pbar = tqdm(total=global_stats['total_items'], desc="Progres", ncols=115, 
+                           bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}',
+                           file=sys.stdout)
+
         try:
-            for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=100, file=sys.stdout), 1):
-                proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list, tgl_idx, len(tanggal_list))
+            for tgl_idx, tgl in enumerate(tanggal_list, 1):
+                proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list, tgl_idx, len(tanggal_list), global_pbar)
+            global_pbar.close()
         except Exception as e:
             console.print(f"\n[bold red]❌ Terjadi kesalahan fatal saat memproses:[/bold red] {e}")
             logger.error(f"Fatal Loop Error: {e}\n{traceback.format_exc()}")
@@ -707,4 +749,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n\n[bold yellow]⚠️  Proses dihentikan paksa oleh pengguna (Ctrl+C).[/bold yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"\n\n[bold red]❌ Terjadi error tak terduga:[/bold red] {e}")
+        sys.exit(1)
