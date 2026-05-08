@@ -1,57 +1,48 @@
 # Automated MRTG to Excel Report
 
-Alat otomatisasi untuk memindahkan data grafik MRTG ke laporan bulanan Excel menggunakan **PaddleOCR (Deep Learning)**. Alat ini mengekstrak nilai *Current*, *Average*, dan *Maximum* untuk *Inbound* dan *Outbound* langsung dari gambar grafik.
-
-## 🚀 Fitur Utama
-- **OCR Canggih**: Menggunakan PaddleOCR yang lebih akurat dibanding Tesseract konvensional.
-- **Fuzzy Keyword Matching**: Tetap akurat meskipun OCR salah baca sedikit (misal: `Inbound` kebaca `Inhound`).
-- **Review List**: Menampilkan daftar ID yang bermasalah (N/A) di akhir proses untuk audit cepat.
-- **Auto-Image Insert**: Otomatis memasukkan dan menyesuaikan ukuran gambar grafik ke dalam sel Excel.
-- **Progress Tracker**: Monitoring proses dengan persentase dan ringkasan per tanggal.
+Alat otomatisasi untuk memindahkan data grafik MRTG ke laporan bulanan Excel menggunakan **PaddleOCR (Deep Learning)**. 
 
 ## 📋 Prasyarat (PENTING!)
-- **Python 3.10, 3.11, atau 3.12** (Sangat disarankan).
-  - **Catatan**: Python 3.13 saat ini **belum didukung** oleh library `paddlepaddle`. Jika Anda menggunakan 3.13, harap instal Python 3.12.
+- **Python 3.12** (Sangat disarankan).
+  - **Catatan**: Python 3.13 **tidak didukung** oleh PaddlePaddle. Jika Anda terlanjur menginstal 3.13, pastikan Anda menginstal 3.12 secara berdampingan.
 - **Microsoft Visual C++ Build Tools** (Wajib untuk Windows).
 
-## 🛠️ Instalasi
+## 🛠️ Instalasi (Langkah Demi Langkah)
 
-1. **Clone Repository**:
+Jika Anda sebelumnya gagal instalasi, **HAPUS** dulu folder `.venv` yang lama!
+
+1. **Hapus Virtual Environment lama (Jika ada)**:
    ```bash
-   git clone https://github.com/username/Automated-MRTG-to-Excel-Report.git
-   cd Automated-MRTG-to-Excel-Report
+   rmdir /s /q .venv
    ```
 
-2. **Buat Virtual Environment** (Gunakan Python 3.12):
+2. **Buat Virtual Environment baru (Python 3.12)**:
    ```bash
-   # Pastikan python yang terpanggil adalah versi 3.12
+   # Pastikan menggunakan versi 3.12
    py -3.12 -m venv .venv
+   ```
+
+3. **Aktifkan Virtual Environment**:
+   ```bash
    .venv\Scripts\activate
    ```
 
-3. **Instal Dependencies**:
+4. **Instal Dependencies**:
    ```bash
-   # Update pip dulu
    python -m pip install --upgrade pip
-   
-   # Instal library utama
-   pip install paddlepaddle paddleocr openpyxl Pillow
+   pip install -r requirements.txt
    ```
-   *Jika `paddlepaddle` tetap tidak ditemukan, coba gunakan link resmi:*
+   *Jika masih ada kendala pada `paddlepaddle`, gunakan index resmi:*
    ```bash
    pip install paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
    ```
 
 ## 📖 Cara Penggunaan
-
-1. **Siapkan Data**: Taruh folder-folder tanggal di `MRTG-Data/`.
-2. **Jalankan Script**: `python mrtg_data_to_monthly_report.py`
-3. **Pilih Mode**: Masukkan `1` untuk OCR.
-4. **Review**: Cek **Review List** di terminal setelah selesai untuk melihat data N/A.
+1. Taruh folder data di `MRTG-Data/`.
+2. Jalankan: `python mrtg_data_to_monthly_report.py`
+3. Masukkan `1` untuk OCR.
+4. Cek hasil di `MRTG-Monthly-Report.xlsx`.
 
 ## 🛠️ Troubleshooting
-- **Error "Could not find a version"**: Ini fiks karena versi Python lu nggak cocok (biasanya karena pake 3.13). Downgrade ke 3.12.
-- **Error "Microsoft Visual C++"**: Lu harus instal [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-
----
-**Note**: Project ini dioptimalkan untuk akurasi tinggi pada layout grafik MRTG.
+- **Gagal Instal Paddle**: Pastikan folder `.venv` lu beneran pake Python 3.12. Cek dengan perintah `python --version` setelah aktivasi venv.
+- **Visual C++ Error**: Instal [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
