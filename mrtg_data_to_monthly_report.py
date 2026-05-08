@@ -16,11 +16,17 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils import column_index_from_string, get_column_letter
 from PIL import Image as PILImage
+from tqdm import tqdm
+from rich.console import Console
+from rich.style import Style
 
 # ========== KONFIGURASI ==========
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FOLDER_DATA = os.path.join(BASE_DIR, "MRTG-Data")
 IMAGE_SCALE = 0.98
+
+# Rich Console untuk output yang cantik
+console = Console()
 
 # --- Logging (DEBUG to File, INFO to Console) ---
 import sys
@@ -33,35 +39,16 @@ fh.setLevel(logging.DEBUG)
 fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(fh)
 
-# Console Handler (Tampilkan progres saja via STDOUT)
-# Kita gunakan stdout karena stderr akan kita mute global untuk membungkam Paddle
+# Console Handler (Hanya ERROR ke console lewat logger, sisa progres via rich/tqdm)
 ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-ch.setFormatter(logging.Formatter('%(message)s'))
+ch.setLevel(logging.ERROR)
 logger.addHandler(ch)
 
-# JURUS PAMUNGKAS: Mute Stderr (FD 2) secara global untuk hilangkan log C++
-try:
-    null_fd = os.open(os.devnull, os.O_RDWR)
-    os.dup2(null_fd, 2)
-except: pass
-
-def cetak_progres_bar(current, total):
-    """Mencetak progress bar ala pip di bagian bawah terminal."""
-    bar_length = 40
-    percent = (current / total)
-    filled_length = int(bar_length * percent)
-    
-    # Bikin bar [===>    ]
-    if filled_length > 0:
-        bar = '=' * (filled_length - 1) + '>' + ' ' * (bar_length - filled_length)
-    else:
-        bar = ' ' * bar_length
-        
-    p_text = f"{int(percent * 100)}%"
-    # ANSI: \033[K (Clear line)
-    sys.stdout.write(f"\r\033[K{{{p_text:<4} [{bar}]}}")
-    sys.stdout.flush()
+# Matikan log internal library sebisanya
+for name in ["ppocr", "paddlex", "ppstructure", "paddle", "PIL", "urllib3"]:
+    l = logging.getLogger(name)
+    l.setLevel(logging.ERROR)
+    l.propagate = False
 
 # --- Mode OCR ---
 OCR_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx")
@@ -168,7 +155,7 @@ def tambah_gambar_di_area(sheet, image_path, start_row, start_col, end_row, end_
         sheet.add_image(img)
         return True
     except Exception as e:
-        print(f"    Gagal tambah gambar: {e}")
+        logger.debug(f"Gagal tambah gambar: {e}")
         return False
 
 
@@ -407,7 +394,7 @@ def tulis_nilai(sheet, entry, values):
             sheet.cell(row=row, column=col, value=values[key])
 
 
-def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_list, global_context):
+def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_list, tanggal_idx, total_tanggal):
     """Proses satu folder tanggal untuk mode OCR (ekstrak data + insert gambar)."""
     hari = int(tanggal_str[6:8])
     sheet_name_candidates = [str(hari), f"{hari:02d}"]
@@ -418,60 +405,38 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
             break
     if sheet is None:
         sheet = wb.create_sheet(title=str(hari))
-        print(f"  Sheet {str(hari)} tidak ditemukan, membuat baru.")
-    else:
-        print(f"  Menggunakan sheet {sheet.title} untuk tanggal {tanggal_str}")
 
     total = len(items)
     ok_count = 0
     na_count = 0
     fail_count = 0
 
-    for idx, (nomor, tipe, id_val) in enumerate(items, 1):
-        # Update Global Counter
-        global_context['current'] += 1
-        curr = global_context['current']
-        total_global = global_context['total']
-        
-        # Tampilkan progres bar di awal sebelum proses
-        cetak_progres_bar(curr-1, total_global)
-        
-        # Terminal format: [01/48]
-        prefix = f"[{curr:02d}/{total_global:02d}]"
-        
+    # Progress bar tqdm dengan format custom, diarahkan ke stdout karena stderr di-mute
+    pbar = tqdm(items, desc=f"Tanggal {tanggal_str} ({tanggal_idx}/{total_tanggal})", 
+                leave=True, ncols=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}',
+                file=sys.stdout)
+    
+    for idx, (nomor, tipe, id_val) in enumerate(pbar, 1):
         id_clean = re.sub(r'^\(\d+\)\s*', '', id_val)
         label = f"{id_val}"
 
         if id_clean not in mapping:
-            # Hapus baris progres bar sementara
-            sys.stdout.write("\r\033[K")
-            print(f"  {prefix} ⏭️  {label} (Skip: No Mapping)")
-            cetak_progres_bar(curr, total_global)
+            pbar.write(f"  ⏭️  [{idx:03d}/{total:03d}] {label} (Skip: No Mapping)")
             continue
         entry = mapping[id_clean]
 
         path_gambar = cari_path_gambar(FOLDER_DATA, tanggal_str, tipe, id_val)
         if not os.path.exists(path_gambar):
-            # Hapus baris progres bar sementara
-            sys.stdout.write("\r\033[K")
-            print(f"  {prefix} ❌ {label} (Missing Image)")
+            pbar.write(f"  ❌ [{idx:03d}/{total:03d}] {label} (Missing Image)")
             fail_count += 1
             global_stats['fail'] += 1
             review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Fail', 'na': 6})
-            cetak_progres_bar(curr, total_global)
             continue
 
-        # Hapus baris progres bar sementara (jika ada) untuk cetak status pencarian
-        sys.stdout.write("\r\033[K")
-        print(f"  {prefix} 🔍 {label} (Processing...)", end='', flush=True)
-        
         values = extract_mrtg_values(path_gambar)
         
-        # Hapus teks "Processing..." untuk diganti hasil akhir
-        sys.stdout.write("\r\033[K")
-        
         if not values:
-            print(f"  {prefix} ❌ {label} (OCR Fail)")
+            pbar.write(f"  ❌ [{idx:03d}/{total:03d}] {label} (OCR Fail)")
             fail_count += 1
             global_stats['fail'] += 1
             review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Fail', 'na': 6})
@@ -479,11 +444,11 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
             # Hitung N/A
             val_na = sum(1 for v in values.values() if v == 'N/A')
             if val_na == 0:
-                print(f"  {prefix} ✅ {label} (Success)")
+                pbar.write(f"  ✅ [{idx:03d}/{total:03d}] {label} (Success)")
                 ok_count += 1
                 global_stats['ok'] += 1
             else:
-                print(f"  {prefix} ⚠️  {label} ({6-val_na}/6 OK)")
+                pbar.write(f"  ⚠️  [{idx:03d}/{total:03d}] {label} ({6-val_na}/6 OK)")
                 na_count += 1
                 global_stats['partial'] += 1
                 review_list.append({'sid': id_clean, 'date': tanggal_str, 'sheet': sheet.title, 'status': 'Partial', 'na': val_na})
@@ -493,11 +458,12 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_lis
                 (start_row, start_col), (end_row, end_col) = entry['Image']
                 tambah_gambar_di_area(sheet, path_gambar, start_row, start_col, end_row, end_col)
 
-        # Munculkan lagi progres bar yang terupdate
-        cetak_progres_bar(curr, total_global)
+        # Update progress bar description
+        pbar.set_postfix({'OK': ok_count, 'Partial': na_count, 'Fail': fail_count})
 
+    pbar.close()
     global_stats['total'] += total
-    print(f"\n  📊 Ringkasan tanggal {tanggal_str}: ✅ {ok_count} OK, ⚠️ {na_count} partial, ❌ {fail_count} gagal (dari {total} item)")
+    console.print(f"[green]✅[/green] Tanggal {tanggal_str}: [green]{ok_count}[/green] OK, [yellow]{na_count}[/yellow] Partial, [red]{fail_count}[/red] Fail", style="bold")
 
 
 # ========================================================
@@ -532,7 +498,7 @@ def baca_mapping_img(filepath):
     return mapping
 
 
-def proses_tanggal_img(wb, tanggal_str, items, mapping):
+def proses_tanggal_img(wb, tanggal_str, items, mapping, tanggal_idx, total_tanggal):
     """Proses satu folder tanggal untuk mode Image-only (insert gambar saja)."""
     hari = int(tanggal_str[6:8])
     sheet_name = f"{hari:02d}"
@@ -540,25 +506,30 @@ def proses_tanggal_img(wb, tanggal_str, items, mapping):
         # Fallback: coba tanpa leading zero
         sheet_name = str(hari)
         if sheet_name not in wb.sheetnames:
-            print(f"  Sheet {hari:02d} tidak ditemukan")
+            console.print(f"[red]❌[/red] Sheet {hari:02d} tidak ditemukan")
             return
     sheet = wb[sheet_name]
-    print(f"  Memproses sheet {sheet_name}...")
 
-    for nomor, tipe, id_val in items:
+    pbar = tqdm(items, desc=f"Tanggal {tanggal_str} ({tanggal_idx}/{total_tanggal})", 
+                leave=True, ncols=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}',
+                file=sys.stdout)
+
+    for nomor, tipe, id_val in pbar:
         id_clean = re.sub(r'^\(\d+\)\s*', '', id_val)
         if id_clean not in mapping:
-            print(f"    Peringatan: ID '{id_clean}' tidak ditemukan di mapping")
+            pbar.write(f"  ⚠️  Peringatan: ID '{id_clean}' tidak ditemukan di mapping")
             continue
         (start_row, start_col), (end_row, end_col) = mapping[id_clean]
 
         path_gambar = cari_path_gambar(FOLDER_DATA, tanggal_str, tipe, id_val)
         if not os.path.exists(path_gambar):
-            print(f"    Gambar tidak ditemukan: {path_gambar}")
+            pbar.write(f"  ❌ Gambar tidak ditemukan: {path_gambar}")
             continue
 
-        print(f"    Menambahkan gambar untuk {tipe} {id_val} di area {start_row},{start_col} - {end_row},{end_col}")
+        pbar.write(f"  ✅ Menambahkan gambar untuk {tipe} {id_val}")
         tambah_gambar_di_area(sheet, path_gambar, start_row, start_col, end_row, end_col)
+
+    pbar.close()
 
 
 # ========================================================
@@ -566,69 +537,67 @@ def proses_tanggal_img(wb, tanggal_str, items, mapping):
 # ========================================================
 
 def main():
-    print("=" * 60)
-    print("  AUTOMATED MRTG TO EXCEL REPORT")
-    print("=" * 60)
-    print("  Pilih mode:")
-    print("  [1] OCR Mode   : Ekstrak data + insert gambar ke Excel")
-    print("  [2] Image Only : Insert gambar saja ke Excel (tanpa OCR)")
-    print("=" * 60)
+    console.print("\n" + "="*60, style="bold cyan")
+    console.print("  AUTOMATED MRTG TO EXCEL REPORT", style="bold cyan")
+    console.print("="*60 + "\n", style="bold cyan")
+    console.print("  Pilih mode:")
+    console.print("  [1] OCR Mode   : Ekstrak data + insert gambar ke Excel")
+    console.print("  [2] Image Only : Insert gambar saja ke Excel (tanpa OCR)")
+    console.print("="*60)
 
     while True:
-        pilihan = input("  >> Masukkan pilihan (1/2): ").strip()
+        pilihan = input("\n  >> Masukkan pilihan (1/2): ").strip()
         if pilihan in ('1', '2'):
             break
-        print("  Input tidak valid. Masukkan 1 atau 2.")
+        console.print("[red]Input tidak valid. Masukkan 1 atau 2.[/red]")
 
     if pilihan == '1':
         # === MODE OCR ===
-        print("\n>> Mode: OCR (Ekstrak data + insert gambar)\n")
+        console.print("\n[green]✅[/green] Mode: [bold]OCR[/bold] (Ekstrak data + insert gambar)\n", style="bold green")
         template_file = OCR_TEMPLATE
         output_file   = OCR_OUTPUT
         mapping_file  = OCR_MAPPING
         daftar_file   = OCR_DAFTAR
 
         if not os.path.exists(mapping_file):
-            print(f"File mapping '{mapping_file}' tidak ditemukan!")
+            console.print(f"[red]❌ File mapping '{mapping_file}' tidak ditemukan![/red]")
             return
         mapping = baca_mapping_ocr(mapping_file)
-        print(f"Mapping berisi {len(mapping)} entri.")
+        console.print(f"[cyan]📋[/cyan] Mapping berisi [bold]{len(mapping)}[/bold] entri.")
 
         items = baca_daftar(daftar_file)
-        print(f"Daftar berisi {len(items)} item.")
+        console.print(f"[cyan]📝[/cyan] Daftar berisi [bold]{len(items)}[/bold] item.")
 
         tanggal_list = get_tanggal_list(FOLDER_DATA)
         if not tanggal_list:
-            print(f"Folder '{FOLDER_DATA}' tidak ditemukan atau kosong!")
+            console.print(f"[red]❌ Folder '{FOLDER_DATA}' tidak ditemukan atau kosong![/red]")
             return
-        print(f"Ditemukan {len(tanggal_list)} folder tanggal.")
+        console.print(f"[cyan]📅[/cyan] Ditemukan [bold]{len(tanggal_list)}[/bold] folder tanggal.")
 
         if not os.path.exists(template_file):
-            print(f"Template '{template_file}' tidak ditemukan!")
+            console.print(f"[red]❌ Template '{template_file}' tidak ditemukan![/red]")
             return
         wb = load_workbook(template_file)
-        print("Template berhasil dimuat.\n")
+        console.print("[cyan]✅[/cyan] Template berhasil dimuat.\n")
 
         # Global Stats
         global_stats = {'ok': 0, 'partial': 0, 'fail': 0, 'total': 0}
         review_list = []
 
-        # Global Context for Progress tracking
-        global_context = {
-            'current': 0,
-            'total': len(tanggal_list) * len(items)
-        }
-
-        for tgl_idx, tgl in enumerate(tanggal_list, 1):
-            print(f"\nMemproses tanggal: {tgl} ({tgl_idx}/{len(tanggal_list)})")
-            proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list, global_context)
-
+        # Progress bar untuk tanggal
+        try:
+            for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=100, file=sys.stdout), 1):
+                proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list, tgl_idx, len(tanggal_list))
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Terjadi kesalahan fatal saat memproses:[/bold red] {e}")
+            logger.error(f"Fatal Loop Error: {e}\n{traceback.format_exc()}")
+            
         wb.save(output_file)
         
         # --- FINAL SUMMARY ---
-        print("\n" + "="*60)
-        print("  FINAL REPORT SUMMARY")
-        print("="*60)
+        console.print("\n" + "="*60, style="bold cyan")
+        console.print("  FINAL REPORT SUMMARY", style="bold cyan")
+        console.print("="*60 + "\n", style="bold cyan")
         
         total = global_stats['total']
         if total > 0:
@@ -636,18 +605,17 @@ def main():
             partial_p = (global_stats['partial'] / total * 100)
             fail_p = (global_stats['fail'] / total * 100)
             
-            print(f"  ✅ BERHASIL (100%) : {global_stats['ok']} items ({ok_p:.1f}%)")
-            print(f"  ⚠️  PARTIAL (N/A)   : {global_stats['partial']} items ({partial_p:.1f}%)")
-            print(f"  ❌ GAGAL (No Data)  : {global_stats['fail']} items ({fail_p:.1f}%)")
-            print(f"  ----------------------------------------------------------")
-            print(f"  TOTAL ITEM PROSES : {total} items")
+            console.print(f"  [green]✅[/green] BERHASIL (100%)    : [bold green]{global_stats['ok']}[/bold green] items ({ok_p:.1f}%)")
+            console.print(f"  [yellow]⚠️ [/yellow] PARTIAL (N/A)     : [bold yellow]{global_stats['partial']}[/bold yellow] items ({partial_p:.1f}%)")
+            console.print(f"  [red]❌[/red] GAGAL (No Data)    : [bold red]{global_stats['fail']}[/bold red] items ({fail_p:.1f}%)")
+            console.print(f"  [cyan]─[/cyan] " + "─"*56)
+            console.print(f"  [cyan]📊[/cyan] TOTAL ITEM PROSES : [bold cyan]{total}[/bold cyan] items")
         else:
-            print("  Tidak ada item yang diproses.")
-        print("="*60)
+            console.print("  Tidak ada item yang diproses.", style="yellow")
+        console.print("="*60)
 
         if review_list:
-            print("\n🔍 LIST ITEM YANG PERLU DICEK (GROUPED BY SID):")
-            print("-" * 80)
+            console.print("\n[yellow]🔍[/yellow] [bold]LIST ITEM YANG PERLU DICEK[/bold] (GROUPED BY SID):\n", style="bold yellow")
             
             # Grouping by SID
             grouped_issues = {}
@@ -676,62 +644,66 @@ def main():
                 
                 status_parts = []
                 if data['partial_count'] > 0:
-                    status_parts.append(f"{data['partial_count']} partial")
+                    status_parts.append(f"[yellow]{data['partial_count']} partial[/yellow]")
                 if data['fail_count'] > 0:
-                    status_parts.append(f"{data['fail_count']} fail")
+                    status_parts.append(f"[red]{data['fail_count']} fail[/red]")
                 status_str = " & ".join(status_parts)
                 
-                print(f"SID     : {sid}")
-                print(f"Tanggal : {dates_str}")
-                print(f"Sheet   : {sheets_str}")
-                print(f"Status  : {status_str}, {data['total_na']} total nilai N/A")
-                print("-" * 80)
+                console.print(f"[cyan]SID[/cyan]     : [bold]{sid}[/bold]")
+                console.print(f"[cyan]Tanggal[/cyan] : {dates_str}")
+                console.print(f"[cyan]Sheet[/cyan]   : {sheets_str}")
+                console.print(f"[cyan]Status[/cyan]  : {status_str}, [bold]{data['total_na']}[/bold] total nilai N/A")
+                console.print("[cyan]" + "─"*56 + "[/cyan]")
             
-            print(f"Total {len(grouped_issues)} SID unik butuh review.")
-            print("💡 Tips: Cek 'ocr_report.log' untuk melihat detail teks yang terdeteksi.")
+            console.print(f"\n[yellow]ℹ️ [/yellow] Total [bold yellow]{len(grouped_issues)}[/bold yellow] SID unik butuh review.", style="bold yellow")
+            console.print("[cyan]💡[/cyan] Tips: Cek '[bold]ocr_report.log[/bold]' untuk melihat detail teks yang terdeteksi.", style="cyan")
         else:
-            print("\n✨ SEMPURNA! Semua data terisi 100%. Tidak ada item untuk direview.")
+            console.print("\n[green]✨[/green] [bold green]SEMPURNA![/bold green] Semua data terisi 100%. Tidak ada item untuk direview.", style="bold green")
 
-        print(f"\n📁 File output: {os.path.abspath(output_file)}")
-        print("="*60)
+        console.print(f"\n[cyan]📁[/cyan] File output: [bold blue]{os.path.abspath(output_file)}[/bold blue]")
+        console.print("="*60)
 
     else:
         # === MODE IMAGE ONLY ===
-        print("\n>> Mode: Image Only (Insert gambar saja)\n")
+        console.print("\n[green]✅[/green] Mode: [bold]Image Only[/bold] (Insert gambar saja)\n", style="bold green")
         template_file = IMG_TEMPLATE
         output_file   = IMG_OUTPUT
         mapping_file  = IMG_MAPPING
         daftar_file   = IMG_DAFTAR
 
         if not os.path.exists(mapping_file):
-            print(f"File mapping '{mapping_file}' tidak ditemukan!")
+            console.print(f"[red]❌ File mapping '{mapping_file}' tidak ditemukan![/red]")
             return
         mapping = baca_mapping_img(mapping_file)
-        print(f"Mapping berisi {len(mapping)} entri.")
+        console.print(f"[cyan]📋[/cyan] Mapping berisi [bold]{len(mapping)}[/bold] entri.")
 
         items = baca_daftar(daftar_file)
-        print(f"Daftar berisi {len(items)} item.")
+        console.print(f"[cyan]📝[/cyan] Daftar berisi [bold]{len(items)}[/bold] item.")
 
         tanggal_list = get_tanggal_list(FOLDER_DATA)
         if not tanggal_list:
-            print(f"Folder '{FOLDER_DATA}' tidak ditemukan atau kosong!")
+            console.print(f"[red]❌ Folder '{FOLDER_DATA}' tidak ditemukan atau kosong![/red]")
             return
-        print(f"Ditemukan {len(tanggal_list)} folder tanggal: {tanggal_list[:5]}...")
+        console.print(f"[cyan]📅[/cyan] Ditemukan [bold]{len(tanggal_list)}[/bold] folder tanggal.")
 
         if not os.path.exists(template_file):
-            print(f"Template '{template_file}' tidak ditemukan!")
+            console.print(f"[red]❌ Template '{template_file}' tidak ditemukan![/red]")
             return
         wb = load_workbook(template_file)
-        print("Template berhasil dimuat.\n")
+        console.print("[cyan]✅[/cyan] Template berhasil dimuat.\n")
 
-        for tgl in tanggal_list:
-            print(f"Memproses tanggal: {tgl}")
-            proses_tanggal_img(wb, tgl, items, mapping)
-
+        try:
+            for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=100, file=sys.stdout), 1):
+                proses_tanggal_img(wb, tgl, items, mapping, tgl_idx, len(tanggal_list))
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Terjadi kesalahan fatal:[/bold red] {e}")
+            logger.error(f"Fatal Loop Error: {e}")
+            
         wb.save(output_file)
-        print("\n" + "=" * 60)
-        print(f"  🎉 SELESAI! File Excel disimpan sebagai: {output_file}")
-        print("=" * 60)
+        console.print("\n" + "="*60, style="bold cyan")
+        console.print(f"  [green]🎉[/green] [bold]SELESAI![/bold] File Excel disimpan sebagai:", style="bold green")
+        console.print(f"  [bold blue]{os.path.abspath(output_file)}[/bold blue]", style="bold")
+        console.print("="*60)
 
 
 if __name__ == "__main__":
