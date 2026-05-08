@@ -1,6 +1,7 @@
 # Output excel file
 MRTG-Monthly-Report.xlsx
 MRTG-Monthly-Report-image-only.xlsx
+ocr_report.log
 
 # Ignore raw image data to prevent repo bloat, but keep the folder
 MRTG-Data/*

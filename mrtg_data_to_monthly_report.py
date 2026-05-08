@@ -1,6 +1,15 @@
 import os
 import re
 import io
+import sys
+import logging
+import traceback
+
+# Suppress noisy PaddleOCR / Paddle C++ logs
+os.environ['GLOG_minloglevel'] = '3'          # Suppress GLOG (C++ INFO/WARNING)
+os.environ['FLAGS_minloglevel'] = '3'
+os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+os.environ['PADDLEX_DISABLE_PRINT'] = '1'
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils import column_index_from_string, get_column_letter
@@ -10,6 +19,17 @@ from PIL import Image as PILImage
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FOLDER_DATA = os.path.join(BASE_DIR, "MRTG-Data")
 IMAGE_SCALE = 0.98
+
+# --- Logging ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('ocr_report.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('mrtg_report')
 
 # --- Mode OCR ---
 OCR_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx")
@@ -179,111 +199,148 @@ def baca_mapping_ocr(filepath):
 
 
 def _get_ocr_engine():
-    """Singleton: inisialisasi PaddleOCR sekali saja agar tidak reload model tiap gambar."""
+    """Singleton: inisialisasi PaddleOCR sekali saja.
+    Kembali ke mode CPU paling stabil untuk menghindari error argument.
+    """
     if not hasattr(_get_ocr_engine, '_engine'):
-        from paddleocr import PaddleOCR
-        _get_ocr_engine._engine = PaddleOCR(
-            use_angle_cls=False,
-            lang='en',
-            show_log=False,
-        )
+        import warnings
+        import contextlib
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from paddleocr import PaddleOCR
+            
+            logger.info("Menginisialisasi PaddleOCR engine (Stable Mode)...")
+            
+            with open(os.devnull, 'w') as fnull:
+                with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
+                    # Gunakan inisialisasi paling dasar yang pasti jalan di semua versi
+                    _get_ocr_engine._engine = PaddleOCR(lang='en')
+            
+        logger.info("PaddleOCR engine siap.")
     return _get_ocr_engine._engine
 
 
 def extract_mrtg_values(image_path):
-    """Ekstrak nilai bandwidth dari gambar MRTG menggunakan PaddleOCR (Deep Learning).
-
-    Mengembalikan dict berisi Inbound/Outbound × Current/Average/Maximum,
-    atau None jika gagal.
-    """
+    """Ekstrak nilai bandwidth dengan strategi Sequential Context & Fuzzy Keywords."""
     try:
         ocr = _get_ocr_engine()
-        results = ocr.ocr(image_path, cls=False)
+        logger.info(f"OCR memproses: {os.path.basename(image_path)}")
 
-        if not results or not results[0]:
-            print(f"    PaddleOCR: Tidak ada teks terdeteksi di {image_path}")
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result_iter = ocr.predict(image_path)
+
+            all_texts = []
+            for res in result_iter:
+                data = res.get('res', res) if hasattr(res, 'get') else {}
+                if data:
+                    texts = data.get('rec_texts', [])
+                    all_texts.extend([str(t).strip() for t in texts])
+
+        if not all_texts:
             return None
 
-        # Kumpulkan semua teks yang terdeteksi beserta posisi Y-nya
-        detected = []
-        for line in results[0]:
-            bbox = line[0]           # [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-            text = line[1][0]        # recognized text
-            confidence = line[1][1]  # confidence score
-            y_center = (bbox[0][1] + bbox[2][1]) / 2  # rata-rata Y atas dan bawah
-            detected.append((y_center, text, confidence))
+        # --- Helper: Cari nilai setelah keyword ---
+        def find_value_after(keyword_list, texts, start_search_idx):
+            """Mencari angka (+ unit) setelah salah satu keyword ditemukan."""
+            for i in range(start_search_idx, len(texts)):
+                t = texts[i].lower()
+                # Cocokkan keyword dengan toleransi typo
+                if any(kw.lower() in t for kw in keyword_list):
+                    # Cari angka di i atau 3 box setelahnya
+                    for j in range(i, min(i + 4, len(texts))):
+                        # Pattern baru: Mendukung integer (100) dan desimal (100.50)
+                        match = re.search(r'(\d+(?:[\.,]\d+)?)\s*([MkGT]?)', texts[j])
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            unit = match.group(2)
+                            if not unit and j + 1 < len(texts):
+                                next_t = texts[j+1].strip()
+                                if next_t in ['M', 'k', 'G', 'T']:
+                                    unit = next_t
+                            return f"{val} {unit}".strip() if unit else f"{val} M"
+                        
+                        # Jika nemu teks N/A, jangan langsung berhenti, cek box selanjutnya siapa tahu ada angka
+                        if 'n/a' in texts[j].lower():
+                            continue
+            return "N/A"
 
-        # Gabungkan semua teks menjadi satu string untuk parsing
-        full_text = ' '.join([t for _, t, _ in detected])
+        # --- Cari Section Inbound & Outbound dengan Fuzzy Matching ---
+        inbound_idx = -1
+        outbound_idx = -1
+        
+        # Keyword list yang lebih luas buat handle typo OCR
+        in_kws = ['inbound', 'in-bound', 'in bound', 'inhound', '1nbound', 'nbound', 'inb']
+        out_kws = ['outbound', 'out-bound', 'out bound', 'oulbound', '0utbound', 'outb']
 
-        # Cari baris Inbound dan Outbound
-        # PaddleOCR mengembalikan teks per-box, jadi kita kelompokkan berdasarkan Y
-        # Box yang Y-nya berdekatan (±15px) dianggap satu baris
-        detected.sort(key=lambda x: x[0])  # sort by Y
+        for i, t in enumerate(all_texts):
+            t_low = t.lower()
+            if any(kw in t_low for kw in in_kws):
+                inbound_idx = i
+            if any(kw in t_low for kw in out_kws):
+                outbound_idx = i
 
-        lines_grouped = []
-        current_line = []
-        current_y = None
+        # Proteksi: Jika Outbound tidak ketemu di legend, cari penanda Current kedua
+        if outbound_idx == -1 and inbound_idx != -1:
+            for i in range(inbound_idx + 1, len(all_texts)):
+                if 'current' in all_texts[i].lower():
+                    # Pastikan ini Current untuk Outbound (setelah ada angka Inbound)
+                    has_numbers_before = False
+                    for j in range(inbound_idx + 1, i):
+                        if re.search(r'\d', all_texts[j]):
+                            has_numbers_before = True
+                            break
+                    if has_numbers_before:
+                        outbound_idx = i - 1
+                        break
 
-        for y, text, conf in detected:
-            if current_y is None or abs(y - current_y) < 15:
-                current_line.append(text)
-                current_y = y if current_y is None else (current_y + y) / 2
-            else:
-                lines_grouped.append(' '.join(current_line))
-                current_line = [text]
-                current_y = y
-        if current_line:
-            lines_grouped.append(' '.join(current_line))
+        # Parse Inbound Area
+        if inbound_idx != -1:
+            search_limit = outbound_idx if outbound_idx > inbound_idx else len(all_texts)
+            in_area = all_texts[inbound_idx:search_limit]
+            in_vals = {
+                'Current': find_value_after(['Current', 'Curren'], in_area, 0),
+                'Average': find_value_after(['Average', 'Averaqe', 'Avera', 'Ave'], in_area, 0),
+                'Maximum': find_value_after(['Maximum', 'Maximu', 'Max'], in_area, 0)
+            }
+        else:
+            in_vals = {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
 
-        inbound_line = ""
-        outbound_line = ""
-        for line in lines_grouped:
-            if 'Inbound' in line or 'inbound' in line:
-                inbound_line = line
-            if 'Outbound' in line or 'outbound' in line:
-                outbound_line = line
-
-        # Fallback: cari di full text
-        if not inbound_line and 'Inbound' in full_text:
-            inbound_line = full_text
-        if not outbound_line and 'Outbound' in full_text:
-            outbound_line = full_text
-
-        def parse_line(line):
-            """Ekstrak Current, Average, Maximum dari satu baris teks."""
-            result = {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
-            for keyword in ['Current', 'Average', 'Maximum']:
-                # Pattern: keyword diikuti tanda : atau spasi, lalu angka + satuan
-                pattern = rf'{keyword}\s*:?\s*([\d\.]+)\s*([MkGT]?)'
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    raw_val = match.group(1)
-                    unit = match.group(2) if match.group(2) else ''
-                    try:
-                        val = float(raw_val)
-                        if val > 100000:
-                            result[keyword] = 'N/A'
-                        else:
-                            result[keyword] = f"{raw_val} {unit}" if unit else f"{raw_val} M"
-                    except ValueError:
-                        result[keyword] = 'N/A'
-            return result
-
-        inbound_vals = parse_line(inbound_line) if inbound_line else {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
-        outbound_vals = parse_line(outbound_line) if outbound_line else {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
+        # Parse Outbound Area
+        if outbound_idx != -1:
+            out_area = all_texts[outbound_idx:]
+            out_vals = {
+                'Current': find_value_after(['Current', 'Curren'], out_area, 0),
+                'Average': find_value_after(['Average', 'Averaqe', 'Avera', 'Ave'], out_area, 0),
+                'Maximum': find_value_after(['Maximum', 'Maximu', 'Max'], out_area, 0)
+            }
+        else:
+            out_vals = {'Current': 'N/A', 'Average': 'N/A', 'Maximum': 'N/A'}
 
         result = {
-            'Inbound_Current': inbound_vals['Current'],
-            'Inbound_Average': inbound_vals['Average'],
-            'Inbound_Maximum': inbound_vals['Maximum'],
-            'Outbound_Current': outbound_vals['Current'],
-            'Outbound_Average': outbound_vals['Average'],
-            'Outbound_Maximum': outbound_vals['Maximum']
+            'Inbound_Current': in_vals['Current'],
+            'Inbound_Average': in_vals['Average'],
+            'Inbound_Maximum': in_vals['Maximum'],
+            'Outbound_Current': out_vals['Current'],
+            'Outbound_Average': out_vals['Average'],
+            'Outbound_Maximum': out_vals['Maximum']
         }
+
+        sid = os.path.basename(image_path).replace('MRTG_', '').replace('.png', '')
+        na_count = sum(1 for v in result.values() if v == 'N/A')
+        status = "✅ OK" if na_count == 0 else f"⚠️ {na_count} N/A"
+        logger.info(f"  [{sid}] {status} -> In: {result['Inbound_Current']}|{result['Inbound_Average']}|{result['Inbound_Maximum']}, Out: {result['Outbound_Current']}|{result['Outbound_Average']}|{result['Outbound_Maximum']}")
+
         return result
     except Exception as e:
-        print(f"OCR Error: {e}")
+        logger.error(f"OCR Error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"OCR Error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"OCR Error: {e}")
         return None
 
 
@@ -294,7 +351,7 @@ def tulis_nilai(sheet, entry, values):
             sheet.cell(row=row, column=col, value=values[key])
 
 
-def proses_tanggal_ocr(wb, tanggal_str, items, mapping):
+def proses_tanggal_ocr(wb, tanggal_str, items, mapping, global_stats, review_list):
     """Proses satu folder tanggal untuk mode OCR (ekstrak data + insert gambar)."""
     hari = int(tanggal_str[6:8])
     sheet_name_candidates = [str(hari), f"{hari:02d}"]
@@ -309,27 +366,56 @@ def proses_tanggal_ocr(wb, tanggal_str, items, mapping):
     else:
         print(f"  Menggunakan sheet {sheet.title} untuk tanggal {tanggal_str}")
 
-    for nomor, tipe, id_val in items:
+    total = len(items)
+    ok_count = 0
+    na_count = 0
+    fail_count = 0
+
+    for idx, (nomor, tipe, id_val) in enumerate(items, 1):
         id_clean = re.sub(r'^\(\d+\)\s*', '', id_val)
+        persen = f"[{idx}/{total} — {idx*100//total}%]"
+        label = f"{tipe} {id_val}"
+
         if id_clean not in mapping:
-            print(f"    Peringatan: ID '{id_clean}' tidak ada di mapping")
+            print(f"    {persen} ⏭️  {label} — ID tidak ada di mapping")
             continue
         entry = mapping[id_clean]
 
         path_gambar = cari_path_gambar(FOLDER_DATA, tanggal_str, tipe, id_val)
         if not os.path.exists(path_gambar):
-            print(f"    Gambar tidak ditemukan: {path_gambar}")
+            print(f"    {persen} ❌ {label} — Gambar tidak ditemukan")
+            fail_count += 1
+            global_stats['fail'] += 1
             continue
 
+        print(f"    {persen} 🔍 {label} — OCR sedang memproses...", end='', flush=True)
         values = extract_mrtg_values(path_gambar)
         if not values:
-            print(f"    Gagal OCR untuk {id_val}")
+            print(f"\r    {persen} ❌ {label} — Gagal OCR (tidak ada data)")
+            fail_count += 1
+            global_stats['fail'] += 1
+            review_list.append({'sid': id_clean, 'date': tanggal_str, 'status': 'Fail'})
             continue
+
+        # Hitung N/A
+        val_na = sum(1 for v in values.values() if v == 'N/A')
+        if val_na == 0:
+            print(f"\r    {persen} ✅ {label} — 6/6 nilai terdeteksi")
+            ok_count += 1
+            global_stats['ok'] += 1
+        else:
+            print(f"\r    {persen} ⚠️  {label} — {6-val_na}/6 nilai ({val_na} N/A)")
+            na_count += 1
+            global_stats['partial'] += 1
+            review_list.append({'sid': id_clean, 'date': tanggal_str, 'status': 'Partial', 'na': val_na})
 
         tulis_nilai(sheet, entry, values)
         if 'Image' in entry:
             (start_row, start_col), (end_row, end_col) = entry['Image']
             tambah_gambar_di_area(sheet, path_gambar, start_row, start_col, end_row, end_col)
+
+    global_stats['total'] += total
+    print(f"\n  📊 Ringkasan tanggal {tanggal_str}: ✅ {ok_count} OK, ⚠️ {na_count} partial, ❌ {fail_count} gagal (dari {total} item)")
 
 
 # ========================================================
@@ -441,15 +527,53 @@ def main():
         wb = load_workbook(template_file)
         print("Template berhasil dimuat.\n")
 
-        for tgl in tanggal_list:
-            print(f"Memproses tanggal: {tgl}")
-            proses_tanggal_ocr(wb, tgl, items, mapping)
+        # Global Stats
+        global_stats = {'ok': 0, 'partial': 0, 'fail': 0, 'total': 0}
+        review_list = []
+
+        for tgl_idx, tgl in enumerate(tanggal_list, 1):
+            print(f"\nMemproses tanggal: {tgl} ({tgl_idx}/{len(tanggal_list)})")
+            proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list)
 
         wb.save(output_file)
-        print("\n" + "=" * 60)
-        print(f"  🎉 SELESAI! File Excel dengan {len(tanggal_list)} sheet telah dibuat.")
-        print(f"  📁 File output: {output_file}")
-        print("=" * 60)
+        
+        # --- FINAL SUMMARY ---
+        print("\n" + "="*60)
+        print("  FINAL REPORT SUMMARY")
+        print("="*60)
+        
+        total = global_stats['total']
+        if total > 0:
+            ok_p = (global_stats['ok'] / total * 100)
+            partial_p = (global_stats['partial'] / total * 100)
+            fail_p = (global_stats['fail'] / total * 100)
+            
+            print(f"  ✅ BERHASIL (100%) : {global_stats['ok']} items ({ok_p:.1f}%)")
+            print(f"  ⚠️  PARTIAL (N/A)   : {global_stats['partial']} items ({partial_p:.1f}%)")
+            print(f"  ❌ GAGAL (No Data)  : {global_stats['fail']} items ({fail_p:.1f}%)")
+            print(f"  ----------------------------------------------------------")
+            print(f"  TOTAL ITEM PROSES : {total} items")
+        else:
+            print("  Tidak ada item yang diproses.")
+        print("="*60)
+
+        if review_list:
+            print("\n🔍 LIST ITEM YANG PERLU DICEK (REVIEW LIST):")
+            print(f"{'No':<4} | {'SID':<20} | {'Sheet':<6} | {'Tanggal':<10} | {'Status':<8} | {'Detail'}")
+            print("-" * 85)
+            for i, item in enumerate(review_list):
+                # Ambil detail N/A atau status
+                detail = f"{item['na']} nilai N/A" if 'na' in item else "Gagal total"
+                # Cari sheet name (biasanya sheet title udah ada di item dari proses_tanggal_ocr)
+                sheet_info = item.get('sheet', '??')
+                print(f"{i+1:<4} | {item['sid']:<20} | {sheet_info:<6} | {item['date']:<10} | {item['status']:<8} | {detail}")
+            print("-" * 85)
+            print(f"Total {len(review_list)} item butuh review.")
+        else:
+            print("\n✨ SEMPURNA! Semua data terisi 100%. Tidak ada item untuk direview.")
+
+        print(f"\n📁 File output: {os.path.abspath(output_file)}")
+        print("="*60)
 
     else:
         # === MODE IMAGE ONLY ===
