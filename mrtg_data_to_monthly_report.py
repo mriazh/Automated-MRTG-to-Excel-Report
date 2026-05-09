@@ -243,10 +243,9 @@ def extract_mrtg_values(image_path):
         # Log ke file saja (DEBUG)
         logger.debug(f"OCR memproses: {os.path.basename(image_path)}")
 
-        import warnings
+        # Mute total biar steril dan gak ngerusak progress bar
         import contextlib
-        
-        # Mute total biar steril
+        import warnings
         with open(os.devnull, 'w') as fnull:
             with contextlib.redirect_stdout(fnull), \
                  contextlib.redirect_stderr(fnull), \
@@ -259,7 +258,6 @@ def extract_mrtg_values(image_path):
                 elif hasattr(ocr, 'ocr'):
                     result_iter = ocr.ocr(image_path)
                 else:
-                    logger.error("Engine OCR tidak punya method predict atau ocr!")
                     return None
 
         all_texts = []

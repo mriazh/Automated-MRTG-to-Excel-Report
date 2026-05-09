@@ -1,37 +1,81 @@
-# Automated MRTG to Excel Report 🚀
+# 🚀 Automated MRTG to Excel Report
 
-Alat bantu otomatis untuk mengekstrak data dari grafik MRTG (.png) dan memasukkannya ke dalam laporan Excel secara rapi. Mendukung ekstraksi data otomatis menggunakan OCR atau sekadar memasukkan gambar saja.
+Alat bantu otomatisasi tingkat tinggi untuk mengolah hasil screenshot MRTG menjadi laporan Excel yang rapi. Bot ini bisa membaca angka bandwidth (Inbound/Outbound) secara otomatis menggunakan teknologi OCR atau sekadar melakukan *image-injection* massal ke dalam template Excel.
+
+---
 
 ## ✨ Fitur Utama
-- **Dual Mode**:
-  - **[1] OCR Mode**: Ekstraksi data bandwidth (Inbound/Outbound) otomatis dari grafik menggunakan PaddleOCR dan memasukkannya ke sel Excel yang ditentukan.
-  - **[2] Image Only**: Memasukkan gambar grafik MRTG ke dalam Excel tanpa proses ekstraksi teks (lebih cepat).
-- **Sticky Progress UI**: Antarmuka terminal yang bersih dengan bar progres yang selalu nempel di bawah, memberikan statistik real-time (OK, Partial, Fail).
-- **Auto-Resize**: Gambar grafik secara otomatis diubah ukurannya agar pas dengan area (cell range) di Excel.
-- **Silent Logging**: Log teknis yang berisik dari library OCR disembunyikan, membuat tampilan terminal tetap fokus pada progres.
-- **Detailed Error Tracking**: Item yang gagal atau perlu review dicatat dalam `ocr_report.log`.
 
-## 🛠️ Persyaratan
-- Python 3.8+
-- Library yang dibutuhkan (instal lewat `requirements.txt`):
-  ```bash
-  pip install -r requirements.txt
-  ```
+- **🧠 Dual Engine Mode**:
+  - **[1] OCR Mode**: Ekstraksi data otomatis dari grafik menggunakan **PaddleOCR** dan memasukkannya ke sel Excel yang spesifik.
+  - **[2] Image Only**: Memasukkan gambar grafik MRTG ke dalam Excel tanpa ekstraksi teks (Sangat Cepat).
+- **📊 Real-time Dashboard**: Tampilan terminal yang bersih dengan progres bar interaktif dan statistik (OK, Partial, Fail).
+- **📏 Smart Image Scaling**: Gambar otomatis di-*resize* secara proporsional agar pas dengan area cell di template Excel lu.
+- **🔇 Stealth Logging**: Log internal library (Paddle/C++) dibungkam agar terminal lu tetap bersih dan fokus pada progres.
+- **🔍 Audit Trails**: Kegagalan ekstraksi atau gambar yang hilang dicatat secara detail di `ocr_report.log` untuk review manual.
+
+---
+
+## 🛠️ Panduan Instalasi (Penting!)
+
+Agar bot berjalan lancar tanpa error `No module named 'paddleocr'`, ikuti langkah-langkah ini:
+
+### 1. Prasyarat Sistem
+- **Python 3.8 - 3.11** (Direkomendasikan 3.10 atau 3.11). 
+- **PENTING**: Wajib menggunakan Python **64-bit**.
+- **Tesseract OCR**: Pastikan terinstall di sistem jika ingin akurasi tambahan.
+
+### 2. Setup Virtual Environment (Rekomendasi)
+Masuk ke folder proyek, lalu buat dan aktifkan environment:
+```powershell
+# Buat environment (jika belum ada)
+python -m venv .venv
+
+# Aktifkan di Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# Aktifkan di Windows (CMD)
+.venv\Scripts\activate
+```
+
+### 3. Install Library
+Setelah environment aktif (ada tanda `(.venv)` di terminal), jalankan:
+```bash
+pip install -r requirements.txt
+```
+
+---
 
 ## 🚀 Cara Penggunaan
-1. Letakkan folder data MRTG lu di folder `MRTG-Data`.
-2. Pastikan file mapping (`list_mrtg_data_position.txt`) dan daftar SID (`list_mrtg_data.txt`) sudah sesuai.
-3. Jalankan script utama:
+
+1. **Siapkan Data**: Masukkan folder hasil screenshot MRTG lu ke dalam folder `MRTG-Data/`.
+   - Struktur: `MRTG-Data/YYYYMMDD/*.png`
+2. **Siapkan Template**: Pastikan file Excel template lu sudah ada di folder utama.
+3. **Konfigurasi Mapping**: Edit file `list_mrtg_data_position.txt` untuk mengatur posisi sel Excel tiap SID.
+4. **Jalankan Bot**:
    ```bash
    python mrtg_data_to_monthly_report.py
    ```
-4. Pilih mode yang diinginkan (1 atau 2) dan biarkan script bekerja.
+5. **Pilih Mode**: Masukkan `1` untuk OCR atau `2` untuk Image Only.
 
-## 📁 Struktur Folder
-- `MRTG-Data/`: Folder berisi subfolder tanggal (YYYYMMDD) yang berisi file .png.
-- `list_mrtg_data.txt`: Daftar SID atau judul grafik yang ingin diproses.
-- `list_mrtg_data_position.txt`: Mapping posisi sel Excel untuk tiap SID (Inbound/Outbound/Image).
-- `ocr_report.log`: Catatan detail jika ada kegagalan ekstraksi data.
+---
 
-## ⚖️ Lisensi
-Project ini menggunakan lisensi MIT. Silakan gunakan dan modifikasi sesuka hati!
+## 📁 Struktur Proyek
+- `MRTG-Data/`: Sumber gambar MRTG (organisir per folder tanggal).
+- `mrtg_data_to_monthly_report.py`: Script utama (Pusat Kendali).
+- `list_mrtg_data.txt`: Daftar SID/Graph-title yang ingin diproses.
+- `list_mrtg_data_position.txt`: Mapping koordinat sel Excel untuk mode OCR.
+- `ocr_report.log`: File audit untuk pengecekan error.
+
+---
+
+## ❓ Troubleshooting
+
+| Masalah | Solusi |
+| :--- | :--- |
+| `No module named 'paddleocr'` | Pastikan lu sudah jalankan perintah di bagian **Langkah 2 & 3** (Aktifkan .venv dulu!). |
+| `Failed to load PaddlePaddle` | Cek apakah Python lu 64-bit. Paddle tidak support Python 32-bit. |
+| Tampilan progress bar berantakan | Pastikan terminal lu mendukung ANSI color (Gunakan Windows Terminal atau CMD modern). |
+
+---
+**💡 Tips**: Jika menggunakan mode OCR, pastikan gambar memiliki kualitas yang baik untuk akurasi data yang maksimal.
