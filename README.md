@@ -27,16 +27,28 @@ Ikuti langkah-langkah ini agar bot berjalan mulus tanpa error:
 
 ### 2. Setup Environment (Terisolasi)
 Agar tidak bentrok dengan aplikasi lain, jalankan perintah ini di terminal:
-```powershell
-# Buat lingkungan kerja baru
-python -m venv .venv
 
-# Aktifkan di Windows (PowerShell)
+**Jika punya satu versi Python:**
+```powershell
+python -m venv .venv
+```
+
+**Jika punya banyak versi Python (PENTING!):**
+Gunakan perintah `py` untuk memilih versi spesifik (misal mau pake 3.12):
+```powershell
+# Pastikan folder .venv lama dihapus dulu jika salah versi
+py -3.12 -m venv .venv
+```
+
+**Aktifkan Environment:**
+```powershell
+# Jika di PowerShell:
 .\.venv\Scripts\Activate.ps1
 
-# Aktifkan di Windows (CMD)
+# Jika di CMD:
 .venv\Scripts\activate
 ```
+*(Setelah aktif, ketik `python --version` buat mastiin udah bener).*
 
 ### 3. Install "Senjata" Bot
 Setelah muncul tanda `(.venv)` di terminal, jalankan:
@@ -82,6 +94,8 @@ Pilih **Mode 1** untuk laporan lengkap atau **Mode 2** untuk kecepatan tinggi.
 
 - **Q: Muncul error 'No module named paddleocr'?**
   - **A**: Pastikan Anda sudah masuk ke virtual environment (`.venv`) sebelum menjalankan script.
+- **Q: Versi Python tetap versi terbaru (misal 3.14), padahal butuh 3.12?**
+  - **A**: Hapus folder `.venv` Anda, lalu buat ulang menggunakan perintah: `py -3.12 -m venv .venv`.
 - **Q: Gambar di Excel tidak muncul?**
   - **A**: Cek folder `MRTG-Data`, pastikan nama file gambar sesuai dengan ID yang didaftarkan.
 - **Q: Hasil OCR kurang akurat?**
