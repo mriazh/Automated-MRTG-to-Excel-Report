@@ -60,17 +60,47 @@ from tqdm import tqdm
 from rich.console import Console
 from rich.style import Style
 
-# ========== KONFIGURASI ==========
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ==============================================================================
+# ⚙️ KONFIGURASI UTAMA (MAGIC NUMBERS)
+# ==============================================================================
+# --- Folder & File ---
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 FOLDER_DATA = os.path.join(BASE_DIR, "MRTG-Data")
-IMAGE_SCALE = 0.98
+LOG_FILE    = 'ocr_report.log'
+
+# --- Tampilan Excel ---
+IMAGE_SCALE         = 0.98    # Skala gambar MRTG di dalam sel (0.1 - 1.0)
+EXCEL_DEFAULT_WIDTH = 8.43    # Lebar kolom standar Excel
+EXCEL_DEFAULT_HEIGHT = 15.0    # Tinggi baris standar Excel (points)
+PX_CONV_WIDTH       = 7.4     # Faktor konversi Lebar Kolom -> Pixels
+PX_CONV_HEIGHT      = 1.333   # Faktor konversi Tinggi Baris -> Pixels
+
+# --- Tampilan Terminal (UI) ---
+TERMINAL_WIDTH      = 60      # Lebar garis pemisah (====)
+PBAR_WIDTH_OCR      = 115     # Lebar progress bar mode OCR
+PBAR_WIDTH_IMG      = 100     # Lebar progress bar mode Image Only
+
+# --- Path Template & Output (OCR) ---
+OCR_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx")
+OCR_OUTPUT   = os.path.join(BASE_DIR, "MRTG-Monthly-Report.xlsx")
+OCR_MAPPING  = os.path.join(BASE_DIR, "list_mrtg_data_position.txt")
+OCR_DAFTAR   = os.path.join(BASE_DIR, "list_mrtg_data.txt")
+
+# --- Path Template & Output (Image Only) ---
+IMG_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom (Img only).xlsx")
+IMG_OUTPUT   = os.path.join(BASE_DIR, "MRTG-Monthly-Report-image-only.xlsx")
+IMG_MAPPING  = os.path.join(BASE_DIR, "list_mrtg_data_position_img_only.txt")
+IMG_DAFTAR   = os.path.join(BASE_DIR, "list_mrtg_data_img_only.txt")
+# ==============================================================================
 
 # Rich Console untuk output yang cantik
+from rich.console import Console
 console = Console()
 
-# --- Logging Setup (DEBUG to File, INFO to Console) ---
-import sys
 
+# ==============================================================================
+# 🔇 LOGGING SETUP (DEBUG to File, INFO to Console)
+# ==============================================================================
 # Setup Root Logger
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
@@ -80,7 +110,7 @@ for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
 
 # 1. File Handler (Detail: DEBUG)
-file_handler = logging.FileHandler('ocr_report.log', encoding='utf-8')
+file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)8s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 file_handler.setFormatter(file_formatter)
@@ -89,7 +119,7 @@ root_logger.addHandler(file_handler)
 # 2. Console Handler (Clean: INFO)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
-console_formatter = logging.Formatter('%(message)s') # Bersih tanpa timestamp di layar
+console_formatter = logging.Formatter('%(message)s')
 console_handler.setFormatter(console_formatter)
 root_logger.addHandler(console_handler)
 
@@ -101,23 +131,7 @@ for name in ["ppocr", "paddlex", "ppstructure", "paddle", "PIL", "urllib3"]:
     l = logging.getLogger(name)
     l.setLevel(logging.ERROR)
     l.propagate = False
-
-# --- Mode OCR ---
-OCR_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom.xlsx")
-OCR_OUTPUT   = os.path.join(BASE_DIR, "MRTG-Monthly-Report.xlsx")
-OCR_MAPPING  = os.path.join(BASE_DIR, "list_mrtg_data_position.txt")
-OCR_DAFTAR   = os.path.join(BASE_DIR, "list_mrtg_data.txt")
-
-# --- Mode Image Only ---
-IMG_TEMPLATE = os.path.join(BASE_DIR, "MRTG-Monthly-Report-on-Internet-Bandwidth-Utilization-by-Telkom (Img only).xlsx")
-IMG_OUTPUT   = os.path.join(BASE_DIR, "MRTG-Monthly-Report-image-only.xlsx")
-IMG_MAPPING  = os.path.join(BASE_DIR, "list_mrtg_data_position_img_only.txt")
-IMG_DAFTAR   = os.path.join(BASE_DIR, "list_mrtg_data_img_only.txt")
-
-
-# ========================================================
-#  SHARED FUNCTIONS (dipakai kedua mode)
-# ========================================================
+# ==============================================================================
 
 def baca_daftar(filepath):
     """Baca daftar SID / Graph-title dari file teks."""
@@ -151,15 +165,15 @@ def get_area_size_pixels(sheet, start_row, start_col, end_row, end_col):
         col_letter = get_column_letter(col)
         col_width = sheet.column_dimensions[col_letter].width
         if col_width is None:
-            col_width = 8.43  # default Excel
-        total_width += col_width * 7.4  # konversi ke pixel (estimasi)
+            col_width = EXCEL_DEFAULT_WIDTH
+        total_width += col_width * PX_CONV_WIDTH
 
     total_height = 0
     for row in range(start_row, end_row + 1):
         row_height = sheet.row_dimensions[row].height
         if row_height is None:
-            row_height = 15  # default Excel dalam point
-        total_height += row_height * 1.333  # konversi ke pixel
+            row_height = EXCEL_DEFAULT_HEIGHT
+        total_height += row_height * PX_CONV_HEIGHT
 
     return total_width, total_height
 
@@ -612,13 +626,13 @@ def proses_tanggal_img(wb, tanggal_str, items, mapping, tanggal_idx, total_tangg
 # ========================================================
 
 def main():
-    console.print("\n" + "="*60, style="bold cyan")
+    console.print("\n" + "=" * TERMINAL_WIDTH, style="bold cyan")
     console.print("  AUTOMATED MRTG TO EXCEL REPORT", style="bold cyan")
-    console.print("="*60 + "\n", style="bold cyan")
+    console.print("=" * TERMINAL_WIDTH + "\n", style="bold cyan")
     console.print("  Pilih mode:")
     console.print("  [1] OCR Mode   : Ekstrak data + insert gambar ke Excel")
     console.print("  [2] Image Only : Insert gambar saja ke Excel (tanpa OCR)")
-    console.print("="*60)
+    console.print("=" * TERMINAL_WIDTH)
 
     while True:
         pilihan = input("\n  >> Masukkan pilihan (1/2): ").strip()
@@ -678,7 +692,7 @@ def main():
         console.print("[green]✅ Engine Ready![/green]\n")
 
         # 2. Progress bar STICKY di paling bawah
-        global_pbar = tqdm(total=global_stats['total_items'], desc="Progres", ncols=115, 
+        global_pbar = tqdm(total=global_stats['total_items'], desc="Progres", ncols=PBAR_WIDTH_OCR, 
                            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}',
                            file=sys.stdout)
 
@@ -703,9 +717,9 @@ def main():
         wb.save(output_file)
         
         # --- FINAL SUMMARY ---
-        console.print("\n" + "="*60, style="bold cyan")
+        console.print("\n" + "=" * TERMINAL_WIDTH, style="bold cyan")
         console.print("  FINAL REPORT SUMMARY", style="bold cyan")
-        console.print("="*60 + "\n", style="bold cyan")
+        console.print("=" * TERMINAL_WIDTH + "\n", style="bold cyan")
         
         total = global_stats['total_items']
         if total > 0:
@@ -808,7 +822,7 @@ def main():
         logger.info("="*80)
 
         try:
-            for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=100, file=sys.stdout), 1):
+            for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=PBAR_WIDTH_IMG, file=sys.stdout), 1):
                 proses_tanggal_img(wb, tgl, items, mapping, tgl_idx, len(tanggal_list))
             
             # LOG SESSION END (IMG ONLY)
