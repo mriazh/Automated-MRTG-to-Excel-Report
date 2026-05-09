@@ -1,16 +1,56 @@
 import os
-import re
-import io
 import sys
-import logging
-import traceback
 
-# Suppress noisy PaddleOCR / Paddle C++ logs
-os.environ['GLOG_minloglevel'] = '3'
-os.environ['FLAGS_minloglevel'] = '3'
-os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
-os.environ['PADDLEX_DISABLE_PRINT'] = '1'
-os.environ['PADDLE_LOG_LEVEL'] = 'ERROR'
+# ==============================================================================
+# 🔇 THE ULTIMATE "KIPAS ANGIN" SILENCE (LOW-LEVEL DUPLICATION)
+# ==============================================================================
+_stdout_fd = sys.stdout.fileno()
+_stderr_fd = sys.stderr.fileno()
+_save_stdout = os.dup(_stdout_fd)
+_save_stderr = os.dup(_stderr_fd)
+
+with open(os.devnull, 'w') as fnull:
+    # Bajak jalur pipa di level OS
+    os.dup2(fnull.fileno(), _stdout_fd)
+    os.dup2(fnull.fileno(), _stderr_fd)
+    
+    try:
+        import warnings
+        import re
+        import io
+        import logging
+        import traceback
+        import contextlib
+        
+        # Environment Flags
+        os.environ['GLOG_minloglevel'] = '3'
+        os.environ['FLAGS_minloglevel'] = '3'
+        os.environ['PADDLE_LOG_LEVEL'] = 'ERROR'
+        os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+        os.environ['PADDLEX_DISABLE_PRINT'] = '1'
+        os.environ['FLAGS_enable_pir_api'] = '0'
+        os.environ['FLAGS_enable_new_executor'] = '0' 
+        os.environ['FLAGS_use_onednn'] = '0' 
+        os.environ['FLAGS_use_mkldnn'] = '0'
+        os.environ['FLAGS_use_gpu'] = '0'
+        os.environ['KMP_WARNINGS'] = '0'
+
+        # Mute warnings
+        warnings.filterwarnings("ignore")
+        
+        # Silent Engine Import
+        import paddle
+        paddle.enable_static()
+        from paddleocr import PaddleOCR
+    except:
+        pass
+    finally:
+        # Kembalikan jalur pipa asli
+        os.dup2(_save_stdout, _stdout_fd)
+        os.dup2(_save_stderr, _stderr_fd)
+        os.close(_save_stdout)
+        os.close(_save_stderr)
+# ==============================================================================
 
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
@@ -28,21 +68,33 @@ IMAGE_SCALE = 0.98
 # Rich Console untuk output yang cantik
 console = Console()
 
-# --- Logging (DEBUG to File, INFO to Console) ---
+# --- Logging Setup (DEBUG to File, INFO to Console) ---
 import sys
+
+# Setup Root Logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+
+# Clear existing handlers
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+# 1. File Handler (Detail: DEBUG)
+file_handler = logging.FileHandler('ocr_report.log', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)8s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+file_handler.setFormatter(file_formatter)
+root_logger.addHandler(file_handler)
+
+# 2. Console Handler (Clean: INFO)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(message)s') # Bersih tanpa timestamp di layar
+console_handler.setFormatter(console_formatter)
+root_logger.addHandler(console_handler)
+
+# Final logger for this script
 logger = logging.getLogger('mrtg_report')
-logger.setLevel(logging.DEBUG)
-
-# File Handler (Simpan detail OCR di sini)
-fh = logging.FileHandler('ocr_report.log', encoding='utf-8')
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(fh)
-
-# Console Handler (Hanya ERROR ke console lewat logger, sisa progres via rich/tqdm)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.ERROR)
-logger.addHandler(ch)
 
 # Matikan log internal library sebisanya
 for name in ["ppocr", "paddlex", "ppstructure", "paddle", "PIL", "urllib3"]:
@@ -222,15 +274,23 @@ def _get_ocr_engine():
     if not hasattr(_get_ocr_engine, '_engine'):
         import warnings
         import contextlib
+        import logging as py_logging
         
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            from paddleocr import PaddleOCR
+        # Mute internal Paddle loggers
+        py_logging.getLogger("ppocr").setLevel(py_logging.ERROR)
+        
+        try:
+            # Double check configuration
+            paddle.set_flags({
+                'FLAGS_enable_pir_api': 0,
+                'FLAGS_enable_new_executor': 0,
+                'FLAGS_use_onednn': 0
+            })
+        except:
+            pass
             
-            # Mute stdout sementara hanya saat inisialisasi model
-            with open(os.devnull, 'w') as fnull:
-                with contextlib.redirect_stdout(fnull):
-                    _get_ocr_engine._engine = PaddleOCR(lang='en')
+        # Inisialisasi model super simpel biar nggak bentrok antar versi
+        _get_ocr_engine._engine = PaddleOCR(lang='en')
             
         logger.debug("PaddleOCR engine siap.")
     return _get_ocr_engine._engine
@@ -243,22 +303,13 @@ def extract_mrtg_values(image_path):
         # Log ke file saja (DEBUG)
         logger.debug(f"OCR memproses: {os.path.basename(image_path)}")
 
-        # Mute total biar steril dan gak ngerusak progress bar
-        import contextlib
-        import warnings
-        with open(os.devnull, 'w') as fnull:
-            with contextlib.redirect_stdout(fnull), \
-                 contextlib.redirect_stderr(fnull), \
-                 warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                
-                # Strategi panggil: Utamakan predict()
-                if hasattr(ocr, 'predict'):
-                    result_iter = ocr.predict(image_path)
-                elif hasattr(ocr, 'ocr'):
-                    result_iter = ocr.ocr(image_path)
-                else:
-                    return None
+        # Strategi panggil: Utamakan predict()
+        if hasattr(ocr, 'predict'):
+            result_iter = ocr.predict(image_path)
+        elif hasattr(ocr, 'ocr'):
+            result_iter = ocr.ocr(image_path)
+        else:
+            return None
 
         all_texts = []
         for res in result_iter:
