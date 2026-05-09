@@ -604,6 +604,13 @@ def main():
         wb = load_workbook(template_file)
         console.print("[cyan]✅[/cyan] Template berhasil dimuat.\n")
 
+        # LOG SESSION START
+        logger.info("")
+        logger.info("="*80)
+        logger.info(f"🆕 SESSION START: MODE OCR")
+        logger.info(f"📂 Template: {os.path.basename(template_file)}")
+        logger.info("="*80)
+
         # Global Stats
         global_stats = {
             'ok': 0, 'partial': 0, 'fail': 0, 
@@ -628,9 +635,19 @@ def main():
             for tgl_idx, tgl in enumerate(tanggal_list, 1):
                 proses_tanggal_ocr(wb, tgl, items, mapping, global_stats, review_list, tgl_idx, len(tanggal_list), global_pbar)
             global_pbar.close()
+
+            # LOG SESSION END
+            logger.info("="*80)
+            logger.info(f"🏁 SESSION END: SUCCESS")
+            logger.info(f"📊 Summary: OK={global_stats['ok']}, Partial={global_stats['partial']}, Fail={global_stats['fail']}")
+            logger.info("="*80)
+            logger.info("")
         except Exception as e:
             console.print(f"\n[bold red]❌ Terjadi kesalahan fatal saat memproses:[/bold red] {e}")
             logger.error(f"Fatal Loop Error: {e}\n{traceback.format_exc()}")
+            logger.info("╔" + "═"*78 + "╗")
+            logger.info(f"║ 🏁 SESSION END: ERROR ({str(e)[:56]:<57} ║")
+            logger.info("╚" + "═"*78 + "╝\n")
             
         wb.save(output_file)
         
@@ -732,12 +749,28 @@ def main():
         wb = load_workbook(template_file)
         console.print("[cyan]✅[/cyan] Template berhasil dimuat.\n")
 
+        # LOG SESSION START (IMG ONLY)
+        logger.info("")
+        logger.info("="*80)
+        logger.info(f"🆕 SESSION START: MODE IMAGE ONLY")
+        logger.info(f"📂 Template: {os.path.basename(template_file)}")
+        logger.info("="*80)
+
         try:
             for tgl_idx, tgl in enumerate(tqdm(tanggal_list, desc="Total Progres", ncols=100, file=sys.stdout), 1):
                 proses_tanggal_img(wb, tgl, items, mapping, tgl_idx, len(tanggal_list))
+            
+            # LOG SESSION END (IMG ONLY)
+            logger.info("="*80)
+            logger.info(f"🏁 SESSION END: SUCCESS (IMAGE ONLY)")
+            logger.info("="*80)
+            logger.info("")
         except Exception as e:
             console.print(f"\n[bold red]❌ Terjadi kesalahan fatal:[/bold red] {e}")
             logger.error(f"Fatal Loop Error: {e}")
+            logger.info("╔" + "═"*78 + "╗")
+            logger.info(f"║ 🏁 SESSION END: ERROR ({str(e)[:56]:<57} ║")
+            logger.info("╚" + "═"*78 + "╝\n")
             
         wb.save(output_file)
         console.print("\n" + "="*60, style="bold cyan")
