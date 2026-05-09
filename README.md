@@ -1,109 +1,91 @@
-# 🚀 Automated MRTG to Excel Report (PRO Edition)
+# 🚀 MRTG to Excel Report Automator (PRO VERSION)
 
-Alat bantu otomatisasi untuk mengolah hasil screenshot MRTG menjadi laporan Excel yang rapi. Bot ini bisa membaca angka bandwidth (Inbound/Outbound) secara otomatis menggunakan teknologi OCR atau melakukan *image-injection* massal ke dalam template Excel.
-
----
-
-## 📖 Daftar Isi
-1. [Prasyarat Sistem](#-prasyarat-sistem)
-2. [Instalasi Cepat (Untuk Pemula)](#-instalasi-cepat-untuk-pemula)
-3. [Cara Penggunaan (Step-by-Step)](#-cara-penggunaan-step-by-step)
-4. [Penjelasan Mode](#-penjelasan-mode)
-5. [Struktur Folder](#-struktur-folder)
-6. [Troubleshooting (Tanya Jawab)](#-troubleshooting-tanya-jawab)
+Alat bantu otomatisasi tingkat tinggi untuk mengekstrak data bandwidth dari grafik MRTG (.png) dan menyusunnya menjadi laporan bulanan Excel yang profesional. Menggunakan teknologi **PaddleOCR** untuk akurasi pembacaan data yang maksimal.
 
 ---
 
-## 🛠️ Prasyarat Sistem
+## ✨ Fitur Unggulan
 
-Sebelum mulai, pastikan komponen ini sudah ada di komputer lu:
-
-1. **Python (Versi 3.8 - 3.12)**:
-   - **PENTING**: Wajib install versi **64-bit**.
-   - [Download Python di sini](https://www.python.org/downloads/windows/) (Ceklis "Add Python to PATH" saat install).
+- **🧠 Intelligent OCR Extraction**: Menggunakan engine **PaddleOCR** untuk membaca nilai *Current*, *Average*, dan *Maximum* (Inbound/Outbound) secara otomatis dari gambar grafik.
+- **🖼️ Smart Image Injection**: Secara otomatis memasukkan gambar grafik ke dalam sel Excel yang ditentukan dengan skala yang pas (Anti-Pecah).
+- **🕹️ Dual Engine Mode**:
+  - **OCR Mode**: Ekstrak data teks + Sisipkan gambar (Lengkap).
+  - **Image Only Mode**: Hanya menyisipkan gambar massal (Super Cepat).
+- **📊 Real-Time Dashboard**: Tampilan terminal modern dengan Progress Bar interaktif dan statistik instan (OK, Partial, Fail).
+- **🛡️ Silent Engine Protocol**: Semua log berisik dari library C++/Paddle disembunyikan agar terminal Anda tetap bersih dan fokus pada progres.
+- **📝 Automated Audit Trail**: Setiap kegagalan pembacaan atau gambar yang hilang dicatat secara rapi di `ocr_report.log` untuk pengecekan ulang.
 
 ---
 
-## ⚡ Instalasi Cepat (Untuk Pemula)
+## 🛠️ Persiapan & Instalasi (Panduan Awam)
 
-Ikuti urutan perintah ini di terminal (CMD/PowerShell) tepat di dalam folder proyek ini:
+Ikuti langkah-langkah ini agar bot berjalan mulus tanpa error:
 
+### 1. Prasyarat Sistem
+- **Python 3.8 - 3.12**: [Download di sini](https://www.python.org/downloads/windows/) (Wajib versi **64-bit**).
+- **Checklist**: Pastikan centang "Add Python to PATH" saat instalasi.
+
+### 2. Setup Environment (Terisolasi)
+Agar tidak bentrok dengan aplikasi lain, jalankan perintah ini di terminal:
 ```powershell
-# 1. Buat lingkungan kerja terisolasi (Virtual Environment)
+# Buat lingkungan kerja baru
 python -m venv .venv
 
-# 2. Aktifkan Environment
-# Jika di PowerShell:
+# Aktifkan di Windows (PowerShell)
 .\.venv\Scripts\Activate.ps1
-# Jika di CMD:
-.venv\Scripts\activate
 
-# 3. Install semua 'senjata' yang dibutuhkan
+# Aktifkan di Windows (CMD)
+.venv\Scripts\activate
+```
+
+### 3. Install "Senjata" Bot
+Setelah muncul tanda `(.venv)` di terminal, jalankan:
+```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## 🚀 Cara Penggunaan (Step-by-Step)
+## 🚀 Cara Menjalankan
 
-Gua kasih contoh alur kerja dari awal sampe dapet laporan:
+### Langkah 1: Persiapan Data
+Masukkan folder hasil screenshot MRTG Anda ke folder `MRTG-Data/`.
+- Struktur folder: `MRTG-Data/YYYYMMDD/gambar_mrtg.png`
 
-### Langkah 1: Siapkan Gambar MRTG
-Masukkan folder hasil screenshot lu ke folder `MRTG-Data`. 
-- Contoh: `MRTG-Data/20260101/MRTG_123456.png`
+### Langkah 2: Konfigurasi Target
+- **Daftar SID**: Masukkan daftar SID di file `list_mrtg_data.txt`.
+- **Mapping Lokasi**: Atur koordinat sel Excel (misal: B10, C12) di file `list_mrtg_data_position.txt`.
 
-### Langkah 2: Edit Daftar Target
-Buka file `list_mrtg_data.txt`, isi dengan SID atau judul grafik yang mau lu proses.
-- Contoh: `1. SID : 4700001-0021497479`
-
-### Langkah 3: Atur Posisi Excel (Mapping)
-Buka file `list_mrtg_data_position.txt`. Di sini lu atur koordinat sel Excel buat naruh angka dan gambar.
-- Contoh: `Inbound_Current : B10` (Artinya angka Inbound Current bakal masuk ke sel B baris 10).
-
-### Langkah 4: Jalankan Bot
-Ketik perintah ini di terminal:
+### Langkah 3: Eksekusi
+Jalankan perintah berikut:
 ```bash
 python mrtg_data_to_monthly_report.py
 ```
-- Pilih **1** jika ingin bot membaca angka (OCR).
-- Pilih **2** jika hanya ingin memasukkan gambar saja (Cepat).
+Pilih **Mode 1** untuk laporan lengkap atau **Mode 2** untuk kecepatan tinggi.
 
 ---
 
-## 📊 Penjelasan Mode
-
-| Fitur | Mode [1] OCR | Mode [2] Image Only |
-| :--- | :--- | :--- |
-| **Fungsi Utama** | Isi angka + Masukin Gambar | Masukin Gambar Saja |
-| **Kecepatan** | ~5-7 detik per gambar | <1 detik per gambar |
-| **Akurasi** | Tergantung kualitas gambar | 100% (Hanya copy-paste) |
-| **Output** | Angka Bandwidth & Grafik | Grafik Saja |
-
----
-
-## 📁 Struktur Folder
-
-- `MRTG-Data/`: Sumber gambar (harus per folder tanggal YYYYMMDD).
-- `mrtg_data_to_monthly_report.py`: Script utama (Pusat Kendali).
-- `list_mrtg_data.txt`: Daftar target yang mau diproses.
-- `list_mrtg_data_position.txt`: Peta koordinat sel Excel.
-- `ocr_report.log`: "Buku tamu" yang mencatat jika ada gambar yang gagal dibaca.
+## 📁 Struktur Folder Proyek
+```text
+.
+├── MRTG-Data/                # Sumber gambar (Per tanggal YYYYMMDD)
+├── mrtg_data_to_monthly_report.py  # Mesin utama pengolah data
+├── list_mrtg_data.txt        # Input daftar SID / Judul Grafik
+├── list_mrtg_data_position.txt # Koordinat penempatan data di Excel
+├── ocr_report.log            # File catatan (Audit Trail)
+└── .venv/                    # Lingkungan kerja terisolasi
+```
 
 ---
 
-## ❓ Troubleshooting (Tanya Jawab)
+## ⚠️ Troubleshooting (FAQ)
 
-**P: Kok muncul error `No module named 'paddleocr'`?**
-J: Itu karena lu belum masuk ke environment. Jalankan `.venv\Scripts\activate` dulu sampe ada tulisan `(.venv)` di depan kursor terminal lu.
-
-**P: Gambar di Excel kok "mencong" atau nggak pas?**
-J: Tenang, bot ini udah pake *Nuclear Isolation*. Pastikan lu udah ngatur `Image : B10-F25` (Range sel) di file mapping dengan benar.
-
-**P: Kenapa progress bar-nya berantakan?**
-J: Gunakan **Windows Terminal** atau CMD versi terbaru agar warna dan bar-nya muncul dengan sempurna.
-
-**P: Python versi 3.12 bisa?**
-J: **BISA!** Bot ini sudah dites lancar di Python 3.12.10 64-bit.
+- **Q: Muncul error 'No module named paddleocr'?**
+  - **A**: Pastikan Anda sudah masuk ke virtual environment (`.venv`) sebelum menjalankan script.
+- **Q: Gambar di Excel tidak muncul?**
+  - **A**: Cek folder `MRTG-Data`, pastikan nama file gambar sesuai dengan ID yang didaftarkan.
+- **Q: Hasil OCR kurang akurat?**
+  - **A**: Pastikan resolusi screenshot MRTG sudah standar dan tidak ada teks yang tertutup overlay.
 
 ---
-**💡 Tips**: Jika hasil OCR kurang akurat, pastikan screenshot MRTG lu bersih dari overlay atau popup saat diambil.
+**Dibuat dengan ❤️ untuk efisiensi pelaporan tim Telkom-GMF.**
