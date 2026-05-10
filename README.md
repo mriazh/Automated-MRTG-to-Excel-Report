@@ -31,10 +31,13 @@ Buka terminal (PowerShell atau CMD) di folder project ini:
 # 1. Buat Virtual Environment (Paksa versi 3.12 jika ada banyak versi)
 py -3.12 -m venv .venv
 
-# 2. Aktifkan Environment
+# 2. Aktifkan Environment (PowerShell)
 .\.venv\Scripts\Activate.ps1
 
-# 3. Install Dependensi
+# 3. Aktifkan Environment (Command Prompt)
+.\.venv\Scripts\Activate
+
+# 4. Install Dependensi
 pip install -r requirements.txt
 ```
 
