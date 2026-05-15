@@ -42,7 +42,7 @@ with open(os.devnull, 'w') as fnull:
         import paddle
         paddle.enable_static()
         from paddleocr import PaddleOCR
-    except:
+    except Exception:
         pass
     finally:
         # Kembalikan jalur pipa asli
@@ -300,7 +300,7 @@ def _get_ocr_engine():
                 'FLAGS_enable_new_executor': 0,
                 'FLAGS_use_onednn': 0
             })
-        except:
+        except Exception:
             pass
             
         # Inisialisasi model super simpel biar nggak bentrok antar versi
